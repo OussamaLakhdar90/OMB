@@ -13,10 +13,6 @@ import org.openqa.selenium.WebElement;
 import org.testng.ITestResult;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
-
-import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.List;
 
@@ -223,29 +219,10 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
         return null;  // URL should come from config, not hardcoded
     }
 
-    /**
-     * Initialize WebDriver before test class.
-     * Note: If using runApplication(), driver will be initialized there instead.
-     */
-    @BeforeClass(alwaysRun = true)
-    public void setUpDriver() {
-        log.info("Setting up WebDriver for test class: {}", this.getClass().getSimpleName());
-        initializeDriver();
-    }
+    // ==================== TestNG Lifecycle ====================
 
     /**
-     * Log test method start before each test.
-     * Note: Navigation is handled by runApplication() in t000_Start_Application().
-     */
-    @BeforeMethod(alwaysRun = true)
-    public void beforeTestMethod(Method method) {
-        log.info("Starting test method: {}", method.getName());
-        // Log step in SauceLabs
-        SauceLabsUtils.logStep(driver, method.getName());
-    }
-
-    /**
-     * Handle test result after each method.
+     * Handle test result after each method (for SauceLabs reporting).
      */
     @AfterMethod(alwaysRun = true)
     public void handleTestResult(ITestResult result) {
