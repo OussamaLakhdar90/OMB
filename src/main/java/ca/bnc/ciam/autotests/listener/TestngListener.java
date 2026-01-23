@@ -23,19 +23,29 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * TestNG listener that provides:
  * - Lexicographic ordering of test methods (t001, t002, etc.)
- * - Dependency checking via @DependentStep annotation
+ * - Automatic dependency checking via @DependentStep annotation
  * - Visual checkpoint handling
  * - Test lifecycle logging
- * - Metrics collection hooks
+ *
+ * Dependency checking works automatically:
+ * - Tests with @DependentStep are skipped if ANY previous test in the class failed
+ * - Tests with @DependentStep(value="methodName") are skipped if that specific method failed
+ * - No manual calls needed in test code
  */
 @Slf4j
 public class TestngListener implements ITestListener, IMethodInterceptor {
 
     /**
      * Tracks failed methods per test class for dependency checking.
-     * Key: Class name, Value: Set of failed method names
+     * Key: Class name, Value: Map of method names to pass/fail status
      */
     private static final Map<String, Map<String, Boolean>> classMethodResults = new ConcurrentHashMap<>();
+
+    /**
+     * Tracks if any test has failed per class (for generic @DependentStep without value).
+     * Key: Class name, Value: true if any test failed
+     */
+    private static final Map<String, Boolean> classHasFailure = new ConcurrentHashMap<>();
 
     /**
      * Stores the start time of each test for duration calculation.
@@ -72,6 +82,7 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
 
         Method method = result.getMethod().getConstructorOrMethod().getMethod();
         String className = result.getTestClass().getName();
+        String simpleClassName = result.getTestClass().getRealClass().getSimpleName();
         String methodName = method.getName();
 
         log.info("=".repeat(80));
@@ -86,14 +97,14 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
             }
         }
 
-        // Check for @DependentStep and verify dependency passed
+        // Check for @DependentStep annotation
         DependentStep dependentStep = method.getAnnotation(DependentStep.class);
         if (dependentStep != null) {
             String dependsOn = dependentStep.value();
-            if (!dependsOn.isEmpty()) {
-                String simpleClassName = result.getTestClass().getRealClass().getSimpleName();
-                Map<String, Boolean> classResults = classMethodResults.get(simpleClassName);
 
+            if (!dependsOn.isEmpty()) {
+                // Specific dependency: skip if that specific method failed
+                Map<String, Boolean> classResults = classMethodResults.get(simpleClassName);
                 if (classResults != null) {
                     Boolean dependencyResult = classResults.get(dependsOn);
                     if (dependencyResult == null) {
@@ -104,6 +115,13 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
                     } else {
                         log.info("Dependency [{}] passed. Proceeding with test.", dependsOn);
                     }
+                }
+            } else {
+                // Generic dependency: skip if ANY previous test in class failed
+                Boolean hasFailed = classHasFailure.get(simpleClassName);
+                if (hasFailed != null && hasFailed) {
+                    log.error("Previous test failed. Skipping dependent test [{}].", methodName);
+                    throw new SkipException("Skipped due to previous test failure in class");
                 }
             }
         }
@@ -139,6 +157,7 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
     @Override
     public void onTestFailure(ITestResult result) {
         recordMethodResult(result, false);
+        markClassAsFailed(result);
         long duration = calculateDuration(result);
 
         log.error("=".repeat(80));
@@ -185,6 +204,9 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
         log.info("STARTING TEST SUITE: {}", context.getName());
         log.info("Total tests: {}", context.getAllTestMethods().length);
         log.info("#".repeat(80));
+
+        // Reset failure tracking for new suite
+        classHasFailure.clear();
     }
 
     @Override
@@ -202,8 +224,9 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
                 total > 0 ? String.format("%.1f", (passed * 100.0) / total) : "N/A");
         log.info("#".repeat(80));
 
-        // Clear results for this test class
+        // Clear results
         classMethodResults.clear();
+        classHasFailure.clear();
     }
 
     /**
@@ -215,6 +238,15 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
 
         classMethodResults.computeIfAbsent(className, k -> new HashMap<>())
                 .put(methodName, passed);
+    }
+
+    /**
+     * Mark the class as having a failure (for generic @DependentStep).
+     */
+    private void markClassAsFailed(ITestResult result) {
+        String className = result.getTestClass().getRealClass().getSimpleName();
+        classHasFailure.put(className, true);
+        log.debug("Class [{}] marked as failed - subsequent @DependentStep tests will be skipped", className);
     }
 
     /**
@@ -248,6 +280,16 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
     public static Boolean hasMethodPassed(String className, String methodName) {
         Map<String, Boolean> classResults = classMethodResults.get(className);
         return classResults != null ? classResults.get(methodName) : null;
+    }
+
+    /**
+     * Check if a class has any failures.
+     *
+     * @param className The test class name
+     * @return true if class has failures
+     */
+    public static boolean hasClassFailed(String className) {
+        return classHasFailure.getOrDefault(className, false);
     }
 
     /**

@@ -10,6 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Base class for data-driven tests.
  * Provides world context for sharing data between test steps.
+ *
+ * Dependency checking is handled automatically by TestngListener.
+ * Just annotate test methods with @DependentStep to skip them if previous tests fail.
  */
 @Slf4j
 public abstract class AbstractDataDrivenTest {
@@ -39,16 +42,6 @@ public abstract class AbstractDataDrivenTest {
      * Thread-local storage for test data map.
      */
     private static final ThreadLocal<Map<String, String>> testDataLocal = ThreadLocal.withInitial(HashMap::new);
-
-    /**
-     * Thread-local storage for continuation flag.
-     */
-    private static final ThreadLocal<Boolean> continueNextStep = ThreadLocal.withInitial(() -> true);
-
-    /**
-     * Thread-local storage for test failure flag.
-     */
-    private static final ThreadLocal<Boolean> testFailed = ThreadLocal.withInitial(() -> false);
 
     /**
      * Shared context across all threads (for cross-test data sharing).
@@ -145,42 +138,6 @@ public abstract class AbstractDataDrivenTest {
     }
 
     /**
-     * Start continuation check for dependent steps.
-     */
-    protected void startContinuationCheck() {
-        continueNextStep.set(true);
-        testFailed.set(false);
-        log.debug("Continuation check started");
-    }
-
-    /**
-     * Stop continuation (mark test as failed).
-     */
-    protected static void stopContinuation() {
-        continueNextStep.set(false);
-        testFailed.set(true);
-        log.debug("Continuation stopped - test marked as failed");
-    }
-
-    /**
-     * Check if continuation should proceed.
-     *
-     * @return True if test should continue
-     */
-    protected static boolean shouldContinue() {
-        return continueNextStep.get();
-    }
-
-    /**
-     * Check if the test has failed.
-     *
-     * @return True if test has failed
-     */
-    protected static boolean hasTestFailed() {
-        return testFailed.get();
-    }
-
-    /**
      * Store a value in the shared context (accessible across tests/threads).
      *
      * @param key   The context key
@@ -228,8 +185,6 @@ public abstract class AbstractDataDrivenTest {
     public static void cleanUp() {
         worldLocal.remove();
         testDataLocal.remove();
-        continueNextStep.remove();
-        testFailed.remove();
         log.debug("Thread-local storage cleaned up");
     }
 }
