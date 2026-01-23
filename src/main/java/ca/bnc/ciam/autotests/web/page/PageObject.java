@@ -2,7 +2,9 @@ package ca.bnc.ciam.autotests.web.page;
 
 import ca.bnc.ciam.autotests.base.AbstractDataDrivenTest;
 import ca.bnc.ciam.autotests.web.WebDriverFactory;
+import ca.bnc.ciam.autotests.web.resources.ResourcesClass;
 import ca.bnc.ciam.autotests.web.util.SeleniumUtils;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -18,6 +20,26 @@ import java.util.List;
 /**
  * Base class for Page Objects.
  * Provides common methods for interacting with web pages.
+ *
+ * Supports internationalization through resource bundles:
+ * - Use getResource(resourceName) to load page-specific properties
+ * - Language is auto-detected from browser or can be set explicitly
+ *
+ * Example:
+ * <pre>
+ * public class LoginPage extends PageObject {
+ *     private final ResourcesClass resource;
+ *
+ *     public LoginPage(WebDriver driver) {
+ *         super(driver);
+ *         this.resource = getResource("login_page");
+ *     }
+ *
+ *     public String getUsernameLabel() {
+ *         return resource.get("username.label");
+ *     }
+ * }
+ * </pre>
  */
 @Slf4j
 public abstract class PageObject extends AbstractDataDrivenTest {
@@ -25,9 +47,13 @@ public abstract class PageObject extends AbstractDataDrivenTest {
     protected static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
     protected static final Duration SHORT_TIMEOUT = Duration.ofSeconds(5);
     protected static final Duration LONG_TIMEOUT = Duration.ofSeconds(30);
+    protected static final String DEFAULT_LANGUAGE = "en";
 
     protected WebDriver driver;
     protected WebDriverWait wait;
+
+    @Getter
+    private String language;
 
     /**
      * Initialize PageObject with the current thread's WebDriver.
@@ -467,5 +493,89 @@ public abstract class PageObject extends AbstractDataDrivenTest {
      */
     public WebDriver getDriver() {
         return driver;
+    }
+
+    // ==================== Resource/i18n Methods ====================
+
+    /**
+     * Gets a ResourcesClass for the specified resource file name.
+     * Uses the browser language or the configured language.
+     *
+     * Resource files should be named: {resourceName}_{language}.properties
+     * e.g., login_page_en.properties, login_page_fr.properties
+     *
+     * @param resourceName the base name of the resource file (without language suffix)
+     * @return ResourcesClass instance for accessing localized strings
+     */
+    protected ResourcesClass getResource(String resourceName) {
+        String lang = getLanguage();
+        if (lang == null || lang.isEmpty()) {
+            lang = detectBrowserLanguage();
+            this.language = lang;
+        }
+        return new ResourcesClass(resourceName, lang, this);
+    }
+
+    /**
+     * Gets a ResourcesClass for the specified resource file name with a specific language.
+     *
+     * @param resourceName the base name of the resource file
+     * @param language     the language code (e.g., "en", "fr")
+     * @return ResourcesClass instance
+     */
+    protected ResourcesClass getResource(String resourceName, String language) {
+        return new ResourcesClass(resourceName, language, this);
+    }
+
+    /**
+     * Sets the language for resource loading.
+     * This overrides the auto-detected browser language.
+     *
+     * @param language the language code (e.g., "en", "fr")
+     */
+    public void setLanguage(String language) {
+        this.language = language;
+        log.debug("Language set to: {}", language);
+    }
+
+    /**
+     * Detects the browser's language from navigator.language.
+     * Falls back to DEFAULT_LANGUAGE if detection fails.
+     *
+     * @return the detected language code (2-letter code like "en", "fr")
+     */
+    protected String detectBrowserLanguage() {
+        try {
+            Object result = executeScript("return navigator.language || navigator.userLanguage;");
+            if (result != null) {
+                String browserLang = result.toString();
+                // Extract 2-letter code (e.g., "en-US" -> "en", "fr-CA" -> "fr")
+                if (browserLang.contains("-")) {
+                    browserLang = browserLang.split("-")[0];
+                }
+                if (browserLang.contains("_")) {
+                    browserLang = browserLang.split("_")[0];
+                }
+                log.debug("Detected browser language: {}", browserLang);
+                return browserLang.toLowerCase();
+            }
+        } catch (Exception e) {
+            log.warn("Could not detect browser language: {}", e.getMessage());
+        }
+        log.debug("Using default language: {}", DEFAULT_LANGUAGE);
+        return DEFAULT_LANGUAGE;
+    }
+
+    /**
+     * Gets the current language being used for resources.
+     * If not set, detects from browser.
+     *
+     * @return the current language code
+     */
+    public String getCurrentLanguage() {
+        if (language == null || language.isEmpty()) {
+            language = detectBrowserLanguage();
+        }
+        return language;
     }
 }
