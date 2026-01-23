@@ -495,6 +495,135 @@ public abstract class PageObject extends AbstractDataDrivenTest {
         return driver;
     }
 
+    // ==================== Element Builders ====================
+
+    /**
+     * Builds an Element wrapper for the given locator with default timeout.
+     *
+     * @param locator the By locator
+     * @return Element wrapper (may contain null WebElement if not found)
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Element buildElement(By locator) {
+        return buildElement(DEFAULT_TIMEOUT.toSeconds(), locator);
+    }
+
+    /**
+     * Builds an Element wrapper with custom timeout.
+     *
+     * @param timeoutSeconds timeout in seconds
+     * @param locator        the By locator
+     * @return Element wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Element buildElement(long timeoutSeconds, By locator) {
+        WebElement element = findElementSafely(locator, timeoutSeconds);
+        return new ca.bnc.ciam.autotests.web.elements.Element(driver, element, locator);
+    }
+
+    /**
+     * Builds a TextField wrapper for the given locator.
+     *
+     * @param locator the By locator
+     * @return TextField wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.TextField buildTextField(By locator) {
+        return buildTextField(DEFAULT_TIMEOUT.toSeconds(), locator);
+    }
+
+    /**
+     * Builds a TextField wrapper with custom timeout.
+     *
+     * @param timeoutSeconds timeout in seconds
+     * @param locator        the By locator
+     * @return TextField wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.TextField buildTextField(long timeoutSeconds, By locator) {
+        WebElement element = findElementSafely(locator, timeoutSeconds);
+        return new ca.bnc.ciam.autotests.web.elements.TextField(driver, element, locator);
+    }
+
+    /**
+     * Builds a Button wrapper for the given locator.
+     *
+     * @param locator the By locator
+     * @return Button wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Button buildButton(By locator) {
+        return buildButton(DEFAULT_TIMEOUT.toSeconds(), locator);
+    }
+
+    /**
+     * Builds a Button wrapper with custom timeout.
+     *
+     * @param timeoutSeconds timeout in seconds
+     * @param locator        the By locator
+     * @return Button wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Button buildButton(long timeoutSeconds, By locator) {
+        WebElement element = findElementSafely(locator, timeoutSeconds);
+        return new ca.bnc.ciam.autotests.web.elements.Button(driver, element, locator);
+    }
+
+    /**
+     * Builds a CheckBox wrapper for the given locator.
+     *
+     * @param locator the By locator
+     * @return CheckBox wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.CheckBox buildCheckBox(By locator) {
+        return buildCheckBox(DEFAULT_TIMEOUT.toSeconds(), locator);
+    }
+
+    /**
+     * Builds a CheckBox wrapper with custom timeout.
+     *
+     * @param timeoutSeconds timeout in seconds
+     * @param locator        the By locator
+     * @return CheckBox wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.CheckBox buildCheckBox(long timeoutSeconds, By locator) {
+        WebElement element = findElementSafely(locator, timeoutSeconds);
+        return new ca.bnc.ciam.autotests.web.elements.CheckBox(driver, element, locator);
+    }
+
+    /**
+     * Builds an Image wrapper for the given locator.
+     *
+     * @param locator the By locator
+     * @return Image wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Image buildImage(By locator) {
+        return buildImage(DEFAULT_TIMEOUT.toSeconds(), locator);
+    }
+
+    /**
+     * Builds an Image wrapper with custom timeout.
+     *
+     * @param timeoutSeconds timeout in seconds
+     * @param locator        the By locator
+     * @return Image wrapper
+     */
+    protected ca.bnc.ciam.autotests.web.elements.Image buildImage(long timeoutSeconds, By locator) {
+        WebElement element = findElementSafely(locator, timeoutSeconds);
+        return new ca.bnc.ciam.autotests.web.elements.Image(driver, element, locator);
+    }
+
+    /**
+     * Finds element safely without throwing exception.
+     *
+     * @param locator        the By locator
+     * @param timeoutSeconds timeout in seconds
+     * @return WebElement or null if not found
+     */
+    private WebElement findElementSafely(By locator, long timeoutSeconds) {
+        try {
+            return new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds))
+                .until(ExpectedConditions.presenceOfElementLocated(locator));
+        } catch (Exception e) {
+            log.debug("Element not found: {} (timeout: {}s)", locator, timeoutSeconds);
+            return null;
+        }
+    }
+
     // ==================== Resource/i18n Methods ====================
 
     /**
