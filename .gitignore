@@ -1,0 +1,23 @@
+# Build outputs
+target/
+*.class
+*.jar
+*.war
+
+# IDE files
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test outputs
+test-output/
+surefire-reports/

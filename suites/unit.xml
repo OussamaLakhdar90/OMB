@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="Unit Tests" parallel="classes" thread-count="4">
+    <test name="Unit Test Suite">
+        <groups>
+            <run>
+                <include name="unit"/>
+            </run>
+        </groups>
+        <packages>
+            <package name="ca.bnc.ciam.autotests.unit.*"/>
+        </packages>
+    </test>
+</suite>
