@@ -51,6 +51,7 @@ public abstract class PageObject extends AbstractDataDrivenTest {
 
     protected WebDriver driver;
     protected WebDriverWait wait;
+    protected ResourcesClass resource;
 
     @Getter
     private String language;
@@ -625,6 +626,27 @@ public abstract class PageObject extends AbstractDataDrivenTest {
     }
 
     // ==================== Resource/i18n Methods ====================
+
+    /**
+     * Gets the page's ResourcesClass instance.
+     * This returns the resource field that should be initialized in the subclass constructor.
+     *
+     * Usage in subclass:
+     * <pre>
+     * public BasePageObject() {
+     *     super();
+     *     resource = new ResourcesClass("base_page", this);
+     * }
+     *
+     * // Then use:
+     * getResource().get("field.label");
+     * </pre>
+     *
+     * @return the ResourcesClass instance, or null if not initialized
+     */
+    protected ResourcesClass getResource() {
+        return resource;
+    }
 
     /**
      * Gets a ResourcesClass for the specified resource file name.
