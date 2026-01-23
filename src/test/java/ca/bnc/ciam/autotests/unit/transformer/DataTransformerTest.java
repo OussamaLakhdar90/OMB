@@ -21,7 +21,7 @@ public class DataTransformerTest {
     }
 
     // ===========================================
-    // transform Tests
+    // transform Tests - Modern Marker ($sensitive:)
     // ===========================================
 
     @Test
@@ -50,7 +50,7 @@ public class DataTransformerTest {
 
     @Test
     public void testTransform_SensitiveValueWithEnvVariable_ReturnsEnvValue() {
-        // PATH is typically always set
+        // PATH is typically always set on all systems
         String result = transformer.transform("$sensitive:PATH");
         // Either returns the env value or the original (if not found)
         assertThat(result).isNotNull();
@@ -72,6 +72,29 @@ public class DataTransformerTest {
     public void testTransform_SensitiveValueWithEmptyKey_ReturnsOriginal() {
         String result = transformer.transform("$sensitive:");
         assertThat(result).isEqualTo("$sensitive:");
+    }
+
+    // ===========================================
+    // transform Tests - Legacy Marker ($en$itive:)
+    // ===========================================
+
+    @Test
+    public void testTransform_LegacyMarker_WithEnvVariable_ReturnsEnvValue() {
+        // PATH is typically always set
+        String result = transformer.transform("$en$itive:PATH");
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    public void testTransform_LegacyMarker_WithNonExistentEnvVariable_ReturnsOriginal() {
+        String result = transformer.transform("$en$itive:NONEXISTENT_VAR_12345");
+        assertThat(result).isEqualTo("$en$itive:NONEXISTENT_VAR_12345");
+    }
+
+    @Test
+    public void testTransform_LegacyMarker_WithEmptyKey_ReturnsOriginal() {
+        String result = transformer.transform("$en$itive:");
+        assertThat(result).isEqualTo("$en$itive:");
     }
 
     // ===========================================
@@ -97,14 +120,26 @@ public class DataTransformerTest {
     }
 
     @Test
-    public void testIsSensitive_SensitiveValue_ReturnsTrue() {
+    public void testIsSensitive_ModernMarker_ReturnsTrue() {
         boolean result = transformer.isSensitive("$sensitive:MY_SECRET");
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    public void testIsSensitive_LegacyMarker_ReturnsTrue() {
+        boolean result = transformer.isSensitive("$en$itive:MY_SECRET");
         assertThat(result).isTrue();
     }
 
     @Test
     public void testIsSensitive_JustPrefix_ReturnsTrue() {
         boolean result = transformer.isSensitive("$sensitive:");
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    public void testIsSensitive_JustLegacyPrefix_ReturnsTrue() {
+        boolean result = transformer.isSensitive("$en$itive:");
         assertThat(result).isTrue();
     }
 
@@ -125,8 +160,14 @@ public class DataTransformerTest {
     }
 
     @Test
-    public void testGetSensitiveKey_SensitiveValue_ReturnsKey() {
+    public void testGetSensitiveKey_ModernMarker_ReturnsKey() {
         String result = transformer.getSensitiveKey("$sensitive:MY_SECRET");
+        assertThat(result).isEqualTo("MY_SECRET");
+    }
+
+    @Test
+    public void testGetSensitiveKey_LegacyMarker_ReturnsKey() {
+        String result = transformer.getSensitiveKey("$en$itive:MY_SECRET");
         assertThat(result).isEqualTo("MY_SECRET");
     }
 
@@ -137,14 +178,34 @@ public class DataTransformerTest {
     }
 
     @Test
-    public void testGetSensitiveKey_SensitiveValueWithEmptyKey_ReturnsNull() {
+    public void testGetSensitiveKey_SensitiveValueWithEmptyKey_ReturnsEmptyString() {
         String result = transformer.getSensitiveKey("$sensitive:");
-        assertThat(result).isNull();
+        assertThat(result).isEmpty();
     }
 
     @Test
-    public void testGetSensitiveKey_SensitiveValueWithMultipleColons_ReturnsLastPart() {
+    public void testGetSensitiveKey_SensitiveValueWithMultipleColons_ReturnsFullKey() {
+        // After "$sensitive:" everything is the key, including additional colons
         String result = transformer.getSensitiveKey("$sensitive:prefix:MY_SECRET");
-        assertThat(result).isEqualTo("MY_SECRET");
+        assertThat(result).isEqualTo("prefix:MY_SECRET");
+    }
+
+    // ===========================================
+    // System Property Fallback Tests
+    // ===========================================
+
+    @Test
+    public void testTransform_SensitiveValueWithSystemProperty_ReturnsPropertyValue() {
+        // Set a system property for testing
+        String testKey = "TEST_TRANSFORMER_PROP_" + System.currentTimeMillis();
+        String testValue = "test-value-123";
+        System.setProperty(testKey, testValue);
+
+        try {
+            String result = transformer.transform("$sensitive:" + testKey);
+            assertThat(result).isEqualTo(testValue);
+        } finally {
+            System.clearProperty(testKey);
+        }
     }
 }

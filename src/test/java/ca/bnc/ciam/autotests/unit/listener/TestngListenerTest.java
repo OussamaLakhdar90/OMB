@@ -8,12 +8,13 @@ import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for TestngListener.
- * Tests listener interface implementation.
+ * Tests listener interface implementation and dependency checking.
  * Note: Many methods require full TestNG integration and are tested via integration tests.
  */
 @Test(groups = "unit")
@@ -34,8 +35,6 @@ public class TestngListenerTest {
     public void testImplements_ITestListener() {
         assertThat(listener).isInstanceOf(org.testng.ITestListener.class);
     }
-
-    // Note: IInvokedMethodListener is not implemented in this library version
 
     @Test
     public void testImplements_IMethodInterceptor() {
@@ -75,6 +74,19 @@ public class TestngListenerTest {
     public void testSkipException_IsCorrectType() {
         SkipException skip = new SkipException("Test skipped due to dependency failure");
         assertThat(skip.getMessage()).contains("Test skipped");
+    }
+
+    @Test
+    public void testSkipException_ForDependencyFailure() {
+        SkipException skip = new SkipException("Skipped due to failed dependency: t001_Login");
+        assertThat(skip.getMessage()).contains("failed dependency");
+        assertThat(skip.getMessage()).contains("t001_Login");
+    }
+
+    @Test
+    public void testSkipException_ForPreviousFailure() {
+        SkipException skip = new SkipException("Skipped due to previous test failure in class");
+        assertThat(skip.getMessage()).contains("previous test failure");
     }
 
     // ===========================================
@@ -153,5 +165,46 @@ public class TestngListenerTest {
 
         assertThat(retention).isNotNull();
         assertThat(retention.value()).isEqualTo(java.lang.annotation.RetentionPolicy.RUNTIME);
+    }
+
+    @Test
+    public void testDependentStepAnnotation_HasValueAttribute() throws NoSuchMethodException {
+        // @DependentStep has a value() attribute for specifying dependency
+        assertThat(ca.bnc.ciam.autotests.annotation.DependentStep.class.getMethod("value")).isNotNull();
+    }
+
+    // ===========================================
+    // Static Helper Method Tests
+    // ===========================================
+
+    @Test
+    public void testHasMethodPassed_NonExistentClass_ReturnsNull() {
+        Boolean result = TestngListener.hasMethodPassed("NonExistentClass", "someMethod");
+        assertThat(result).isNull();
+    }
+
+    @Test
+    public void testHasClassFailed_NonExistentClass_ReturnsFalse() {
+        boolean result = TestngListener.hasClassFailed("NonExistentClass");
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testGetClassResults_NonExistentClass_ReturnsEmptyMap() {
+        Map<String, Boolean> results = TestngListener.getClassResults("NonExistentClass");
+        assertThat(results).isEmpty();
+    }
+
+    // ===========================================
+    // Annotation Target Tests
+    // ===========================================
+
+    @Test
+    public void testDependentStepAnnotation_TargetsMethod() {
+        java.lang.annotation.Target target = ca.bnc.ciam.autotests.annotation.DependentStep.class
+                .getAnnotation(java.lang.annotation.Target.class);
+
+        assertThat(target).isNotNull();
+        assertThat(target.value()).contains(java.lang.annotation.ElementType.METHOD);
     }
 }
