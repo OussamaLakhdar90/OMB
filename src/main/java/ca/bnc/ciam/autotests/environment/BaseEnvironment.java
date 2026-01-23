@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -190,6 +191,21 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
      */
     public static Iterator<Object[]> buildTestEnvironment(String testId) {
         return buildTestData(testId);
+    }
+
+    /**
+     * Build test environment data as a Collection for the given test ID.
+     * This is a convenience method that returns a Collection instead of Iterator,
+     * making it easier to use with TestNG @DataProvider and other Collection-based APIs.
+     *
+     * @param testId The test ID to load data for
+     * @return Collection of test data arrays
+     */
+    public static Collection<Object[]> buildTestEnvironmentAsCollection(String testId) {
+        Iterator<Object[]> iter = buildTestEnvironment(testId);
+        List<Object[]> list = new ArrayList<>();
+        iter.forEachRemaining(list::add);
+        return list;
     }
 
     /**
