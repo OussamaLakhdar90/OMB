@@ -771,6 +771,102 @@ public final class Validate {
             // For now, delegate to exists - wait logic can be added if needed
             exists(element, verificationContext);
         }
+
+        // ==================== doesNotExistWaitSeconds() methods ====================
+
+        /**
+         * Wait for a WebElement to not exist (disappear/become not displayed).
+         * Polls the element until it is no longer displayed or timeout is reached.
+         *
+         * @param element the WebElement to check
+         * @param waitSeconds maximum time to wait in seconds
+         * @param verificationContext description for logging
+         * @return true if element disappeared within timeout, false otherwise
+         */
+        public static boolean doesNotExistWaitSeconds(WebElement element, int waitSeconds, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Waiting for element to disappear: {} (timeout: {}s)", verificationContext, waitSeconds);
+                long startTime = System.currentTimeMillis();
+                long timeoutMillis = waitSeconds * 1000L;
+
+                while (System.currentTimeMillis() - startTime < timeoutMillis) {
+                    try {
+                        if (element == null || !element.isDisplayed()) {
+                            log.info("PASS: {} - Element disappeared after {}ms",
+                                    verificationContext, System.currentTimeMillis() - startTime);
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        // Element no longer in DOM or stale - this is a pass
+                        log.info("PASS: {} - Element no longer accessible after {}ms: {}",
+                                verificationContext, System.currentTimeMillis() - startTime, e.getMessage());
+                        return true;
+                    }
+
+                    // Wait 100ms before next poll
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+
+                // Timeout reached - element still displayed
+                log.error("FAIL: {} - Element still displayed after {}s", verificationContext, waitSeconds);
+                if (failOnError) {
+                    throw new AssertionError(verificationContext + " - Element still displayed after " + waitSeconds + " seconds");
+                }
+                return false;
+            }
+        }
+
+        /**
+         * Wait for an IElement to not exist (disappear/become not displayed).
+         * Polls the element until it is no longer displayed or timeout is reached.
+         *
+         * @param element the IElement to check
+         * @param waitSeconds maximum time to wait in seconds
+         * @param verificationContext description for logging
+         * @return true if element disappeared within timeout, false otherwise
+         */
+        public static boolean doesNotExistWaitSeconds(IElement element, int waitSeconds, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Waiting for IElement to disappear: {} (timeout: {}s)", verificationContext, waitSeconds);
+                long startTime = System.currentTimeMillis();
+                long timeoutMillis = waitSeconds * 1000L;
+
+                while (System.currentTimeMillis() - startTime < timeoutMillis) {
+                    try {
+                        if (element == null || element.isNull() || !element.isDisplayed()) {
+                            log.info("PASS: {} - IElement disappeared after {}ms",
+                                    verificationContext, System.currentTimeMillis() - startTime);
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        // Element no longer in DOM or stale - this is a pass
+                        log.info("PASS: {} - IElement no longer accessible after {}ms: {}",
+                                verificationContext, System.currentTimeMillis() - startTime, e.getMessage());
+                        return true;
+                    }
+
+                    // Wait 100ms before next poll
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+
+                // Timeout reached - element still displayed
+                log.error("FAIL: {} - IElement still displayed after {}s", verificationContext, waitSeconds);
+                if (failOnError) {
+                    throw new AssertionError(verificationContext + " - IElement still displayed after " + waitSeconds + " seconds");
+                }
+                return false;
+            }
+        }
     }
 
     /**

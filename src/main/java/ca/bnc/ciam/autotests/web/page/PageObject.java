@@ -638,13 +638,13 @@ public abstract class PageObject extends AbstractDataDrivenTest {
      *     resource = new ResourcesClass("base_page", this);
      * }
      *
-     * // Then use:
-     * getResource().get("field.label");
+     * // Then use in test:
+     * page.getResource().get("field.label");
      * </pre>
      *
      * @return the ResourcesClass instance, or null if not initialized
      */
-    protected ResourcesClass getResource() {
+    public ResourcesClass getResource() {
         return resource;
     }
 
