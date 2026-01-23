@@ -439,6 +439,12 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
 
     /**
      * Read the data manager path from the debug configuration file.
+     * Also reads and sets all other config parameters as system properties:
+     * - web_url / webUrl -> web.url
+     * - browser -> browser
+     * - lang -> bnc.web.gui.lang
+     * - record -> bnc.record.mode
+     * - cap -> browser capabilities (as JSON string)
      */
     private static String readPathToDataFromConfig() {
         try {
@@ -449,11 +455,70 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
                 return null;
             }
             Map<String, Object> configData = objectMapper.readValue(configFile, new TypeReference<>() {});
+
+            // Set web URL (supports both web_url and webUrl keys)
+            String webUrl = getConfigValue(configData, "web_url", "webUrl");
+            if (webUrl != null && System.getProperty("web.url") == null) {
+                System.setProperty("web.url", webUrl);
+                log.info("Set system property web.url = {}", webUrl);
+            }
+
+            // Set browser
+            String browser = (String) configData.get("browser");
+            if (browser != null && System.getProperty("browser") == null) {
+                System.setProperty("browser", browser);
+                log.info("Set system property browser = {}", browser);
+            }
+
+            // Set language
+            String lang = (String) configData.get("lang");
+            if (lang != null && System.getProperty("bnc.web.gui.lang") == null) {
+                System.setProperty("bnc.web.gui.lang", lang);
+                log.info("Set system property bnc.web.gui.lang = {}", lang);
+            }
+
+            // Set record mode
+            Object recordObj = configData.get("record");
+            if (recordObj != null && System.getProperty("bnc.record.mode") == null) {
+                String recordValue = String.valueOf(recordObj);
+                System.setProperty("bnc.record.mode", recordValue);
+                log.info("Set system property bnc.record.mode = {}", recordValue);
+            }
+
+            // Set capabilities as JSON string
+            Object capObj = configData.get("cap");
+            if (capObj != null && System.getProperty("browser.capabilities") == null) {
+                String capJson = objectMapper.writeValueAsString(capObj);
+                System.setProperty("browser.capabilities", capJson);
+                log.info("Set system property browser.capabilities = {}", capJson);
+            }
+
+            // Set headless mode
+            Object headlessObj = configData.get("headless");
+            if (headlessObj != null && System.getProperty("headless") == null) {
+                String headlessValue = String.valueOf(headlessObj);
+                System.setProperty("headless", headlessValue);
+                log.info("Set system property headless = {}", headlessValue);
+            }
+
             return (String) configData.get("data");
         } catch (IOException e) {
             log.error("Error reading the configuration file at {}: {}", CONFIG_FILE_PATH, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Get config value supporting multiple key names.
+     */
+    private static String getConfigValue(Map<String, Object> config, String... keys) {
+        for (String key : keys) {
+            Object value = config.get(key);
+            if (value != null) {
+                return String.valueOf(value);
+            }
+        }
+        return null;
     }
 
     /**
