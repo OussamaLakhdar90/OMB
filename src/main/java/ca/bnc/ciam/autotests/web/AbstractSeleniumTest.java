@@ -40,9 +40,7 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     protected WebConfig webConfig;
 
     /**
-     * Test data field for convenient access.
-     * Use this.testData.get("key") or this.testData.getForKey("key")
-     * Note: This is refreshed each time via the getter below.
+     * Test data field - use testData getter to access.
      */
     protected TestData testData;
 
@@ -50,21 +48,41 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     private static final Duration PAGE_LOAD_TIMEOUT = Duration.ofSeconds(30);
 
     /**
-     * Refreshes the testData field with current test data.
-     * Call this at the start of your test if testData is null.
+     * Get the test data for this test.
+     * Fails the test with a clear message if testData is not initialized.
+     *
+     * @return the TestData instance
+     * @throws IllegalStateException if testData is null (not initialized)
      */
-    protected void refreshTestData() {
-        this.testData = testData();
+    protected TestData getTestDataOrFail() {
+        if (testData == null) {
+            throw new IllegalStateException(
+                "TestData is null! Make sure to call refreshTestData() or runApplication() before accessing testData. " +
+                "This usually happens when @Factory/@DataProvider did not provide test data, or testData was accessed before initialization.");
+        }
+        return testData;
     }
 
     /**
-     * Gets the TestData object, refreshing if necessary.
+     * Refreshes the testData field with current test data from the parent class.
+     * Call this at the start of your test or in @BeforeClass.
+     * Fails the test if testData is empty after refresh.
      */
-    protected TestData getTestDataObject() {
-        if (this.testData == null) {
-            this.testData = testData();
+    protected void refreshTestData() {
+        this.testData = super.testData();
+        if (testData == null || testData.getDataMap() == null || testData.getDataMap().isEmpty()) {
+            throw new IllegalStateException(
+                "TestData is null or empty after refresh! Check your @Factory/@DataProvider setup. " +
+                "Make sure test data JSON files exist and are properly configured.");
         }
-        return this.testData;
+        log.debug("TestData refreshed with {} entries", testData.getDataMap().size());
+    }
+
+    /**
+     * Check if testData has been initialized.
+     */
+    protected boolean hasTestData() {
+        return testData != null && testData.getDataMap() != null && !testData.getDataMap().isEmpty();
     }
 
     // ==================== runApplication - Main Entry Point ====================
@@ -120,7 +138,7 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
         }
 
         // Priority 2: testData (data-driven URL)
-        if (testData != null && testData.hasKey("_app_url")) {
+        if (hasTestData() && testData.hasKey("_app_url")) {
             String dataUrl = testData.getForKey("_app_url");
             if (dataUrl != null && !dataUrl.isEmpty()) {
                 log.info("Using URL from testData _app_url: {}", dataUrl);
@@ -221,7 +239,7 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      */
     protected String getLanguage() {
         // Priority 1: testData
-        if (testData != null && testData.hasKey("_lang")) {
+        if (hasTestData() && testData.hasKey("_lang")) {
             return testData.getForKey("_lang");
         }
         // Priority 2: System property
