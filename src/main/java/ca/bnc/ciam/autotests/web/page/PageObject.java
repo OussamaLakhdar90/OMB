@@ -617,10 +617,13 @@ public abstract class PageObject extends AbstractDataDrivenTest {
      */
     private WebElement findElementSafely(By locator, long timeoutSeconds) {
         try {
-            return new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds))
+            log.debug("Finding element: {} (timeout: {}s)", locator, timeoutSeconds);
+            WebElement element = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds))
                 .until(ExpectedConditions.presenceOfElementLocated(locator));
+            log.debug("Element found: {}", locator);
+            return element;
         } catch (Exception e) {
-            log.debug("Element not found: {} (timeout: {}s)", locator, timeoutSeconds);
+            log.warn("Element NOT FOUND: {} (timeout: {}s) - {}", locator, timeoutSeconds, e.getMessage());
             return null;
         }
     }
@@ -650,7 +653,10 @@ public abstract class PageObject extends AbstractDataDrivenTest {
 
     /**
      * Gets a ResourcesClass for the specified resource file name.
-     * Uses the browser language or the configured language.
+     * Uses the configured language from (in order of priority):
+     * 1. Instance language field (set via setLanguage())
+     * 2. System property "bnc.web.gui.lang" (from debug_config.json)
+     * 3. Browser language detection
      *
      * Resource files should be named: {resourceName}_{language}.properties
      * e.g., login_page_en.properties, login_page_fr.properties
@@ -661,9 +667,14 @@ public abstract class PageObject extends AbstractDataDrivenTest {
     protected ResourcesClass getResource(String resourceName) {
         String lang = getLanguage();
         if (lang == null || lang.isEmpty()) {
-            lang = detectBrowserLanguage();
-            this.language = lang;
+            // Check system property set by BaseEnvironment from debug_config.json
+            lang = System.getProperty("bnc.web.gui.lang");
+            log.debug("Language from system property 'bnc.web.gui.lang': {}", lang);
         }
+        if (lang == null || lang.isEmpty()) {
+            lang = detectBrowserLanguage();
+        }
+        this.language = lang;
         return new ResourcesClass(resourceName, lang, this);
     }
 
@@ -719,11 +730,15 @@ public abstract class PageObject extends AbstractDataDrivenTest {
 
     /**
      * Gets the current language being used for resources.
-     * If not set, detects from browser.
+     * Priority: instance field > system property > browser detection.
      *
      * @return the current language code
      */
     public String getCurrentLanguage() {
+        if (language == null || language.isEmpty()) {
+            // Check system property set by BaseEnvironment from debug_config.json
+            language = System.getProperty("bnc.web.gui.lang");
+        }
         if (language == null || language.isEmpty()) {
             language = detectBrowserLanguage();
         }

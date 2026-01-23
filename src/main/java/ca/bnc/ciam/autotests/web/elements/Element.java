@@ -111,12 +111,46 @@ public class Element implements IElement {
     @Override
     public String getText() {
         if (isNull()) {
+            log.debug("getText() called on null element - locator: {}", locator);
             return "";
         }
         try {
-            return baseElement.getText();
+            String text = baseElement.getText();
+            // If getText() returns empty, try alternative methods
+            if (text == null || text.isEmpty()) {
+                // Try innerText attribute (works better for some elements)
+                text = baseElement.getAttribute("innerText");
+            }
+            if (text == null || text.isEmpty()) {
+                // Try textContent via JavaScript (most reliable fallback)
+                text = (String) ((JavascriptExecutor) driver).executeScript(
+                    "return arguments[0].textContent || arguments[0].innerText || '';", baseElement);
+            }
+            return text != null ? text.trim() : "";
         } catch (Exception e) {
             log.debug("Error getting element text: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * Gets the visible text of the element using JavaScript.
+     * Use this when regular getText() returns empty.
+     *
+     * @return the text content from JavaScript, or empty string if not found
+     */
+    public String getTextByJs() {
+        if (isNull()) {
+            log.debug("getTextByJs() called on null element - locator: {}", locator);
+            return "";
+        }
+        try {
+            Object result = ((JavascriptExecutor) driver).executeScript(
+                "return arguments[0].textContent || arguments[0].innerText || arguments[0].value || '';",
+                baseElement);
+            return result != null ? result.toString().trim() : "";
+        } catch (Exception e) {
+            log.debug("Error getting element text via JS: {}", e.getMessage());
             return "";
         }
     }
