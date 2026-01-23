@@ -1,6 +1,7 @@
 package ca.bnc.ciam.autotests.web;
 
 import ca.bnc.ciam.autotests.base.AbstractDataDrivenTest;
+import ca.bnc.ciam.autotests.data.TestData;
 import ca.bnc.ciam.autotests.web.config.BrowserType;
 import ca.bnc.ciam.autotests.web.config.ExecutionMode;
 import ca.bnc.ciam.autotests.web.config.WebConfig;
@@ -38,8 +39,33 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     protected WebDriver driver;
     protected WebConfig webConfig;
 
+    /**
+     * Test data field for convenient access.
+     * Use this.testData.get("key") or this.testData.getForKey("key")
+     * Note: This is refreshed each time via the getter below.
+     */
+    protected TestData testData;
+
     private static final Duration IMPLICIT_WAIT = Duration.ofSeconds(10);
     private static final Duration PAGE_LOAD_TIMEOUT = Duration.ofSeconds(30);
+
+    /**
+     * Refreshes the testData field with current test data.
+     * Call this at the start of your test if testData is null.
+     */
+    protected void refreshTestData() {
+        this.testData = testData();
+    }
+
+    /**
+     * Gets the TestData object, refreshing if necessary.
+     */
+    protected TestData getTestDataObject() {
+        if (this.testData == null) {
+            this.testData = testData();
+        }
+        return this.testData;
+    }
 
     // ==================== runApplication - Main Entry Point ====================
 
@@ -54,6 +80,8 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      * Call this from t000_Start_Application() in test classes.
      */
     protected void runApplication() {
+        // Refresh testData to ensure it's available
+        refreshTestData();
         String url = buildURL();
         runApplication(url);
     }
@@ -92,9 +120,8 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
         }
 
         // Priority 2: testData (data-driven URL)
-        var data = getTestData();
-        if (data != null && data.containsKey("_app_url")) {
-            String dataUrl = data.get("_app_url");
+        if (testData != null && testData.hasKey("_app_url")) {
+            String dataUrl = testData.getForKey("_app_url");
             if (dataUrl != null && !dataUrl.isEmpty()) {
                 log.info("Using URL from testData _app_url: {}", dataUrl);
                 return dataUrl;
@@ -194,9 +221,8 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      */
     protected String getLanguage() {
         // Priority 1: testData
-        var data = getTestData();
-        if (data != null && data.containsKey("_lang")) {
-            return data.get("_lang");
+        if (testData != null && testData.hasKey("_lang")) {
+            return testData.getForKey("_lang");
         }
         // Priority 2: System property
         String lang = System.getProperty("bnc.web.gui.lang");
