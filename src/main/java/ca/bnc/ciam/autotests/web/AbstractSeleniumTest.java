@@ -79,13 +79,19 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      * Build the application URL.
      * Override in subclass if custom URL logic is needed.
      *
+     * URL resolution order:
+     * 1. System property "bnc.web.app.url" (pipeline - from context.json)
+     * 2. testData "_app_url" (data-driven)
+     * 3. System property "web.url" or "webUrl" (local config)
+     * 4. getBaseUrl() from subclass (fallback)
+     *
      * @return The application URL
      */
     protected String buildURL() {
-        // Priority 1: System property (pipeline execution)
+        // Priority 1: System property bnc.web.app.url (pipeline execution - context.json)
         String appUrl = System.getProperty("bnc.web.app.url");
         if (appUrl != null && !appUrl.isEmpty()) {
-            log.info("Using URL from system property: {}", appUrl);
+            log.info("Using URL from system property bnc.web.app.url (pipeline): {}", appUrl);
             return appUrl;
         }
 
@@ -93,15 +99,31 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
         if (testData != null && testData.containsKey("_app_url")) {
             String dataUrl = testData.get("_app_url");
             if (dataUrl != null && !dataUrl.isEmpty()) {
-                log.info("Using URL from testData: {}", dataUrl);
+                log.info("Using URL from testData _app_url: {}", dataUrl);
                 return dataUrl;
             }
         }
 
-        // Priority 3: getBaseUrl() from subclass
+        // Priority 3: System property web.url or webUrl (local config - debug_config.json)
+        String webUrl = System.getProperty("web.url");
+        if (webUrl == null || webUrl.isEmpty()) {
+            webUrl = System.getProperty("webUrl");
+        }
+        if (webUrl != null && !webUrl.isEmpty()) {
+            log.info("Using URL from system property web.url (local): {}", webUrl);
+            return webUrl;
+        }
+
+        // Priority 4: getBaseUrl() from subclass (fallback)
         String baseUrl = getBaseUrl();
-        log.info("Using base URL: {}", baseUrl);
-        return baseUrl;
+        if (baseUrl != null && !baseUrl.isEmpty()) {
+            log.info("Using base URL from subclass: {}", baseUrl);
+            return baseUrl;
+        }
+
+        throw new IllegalStateException(
+            "No URL configured. Set bnc.web.app.url (pipeline), web.url (local), " +
+            "testData._app_url, or override getBaseUrl()");
     }
 
     /**
@@ -188,9 +210,18 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     }
 
     /**
-     * Get the base URL for tests. Override in subclass.
+     * Get the base URL for tests.
+     * Override in subclass only if you need a hardcoded fallback URL.
+     *
+     * Normally URL comes from:
+     * - Pipeline: bnc.web.app.url system property (from context.json)
+     * - Local: web.url system property (from debug_config.json)
+     *
+     * @return the base URL, or null to require URL from config
      */
-    protected abstract String getBaseUrl();
+    protected String getBaseUrl() {
+        return null;  // URL should come from config, not hardcoded
+    }
 
     /**
      * Initialize WebDriver before test class.
@@ -203,17 +234,12 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     }
 
     /**
-     * Navigate to base URL before each test method.
+     * Log test method start before each test.
+     * Note: Navigation is handled by runApplication() in t000_Start_Application().
      */
     @BeforeMethod(alwaysRun = true)
-    public void navigateToBaseUrl(Method method) {
+    public void beforeTestMethod(Method method) {
         log.info("Starting test method: {}", method.getName());
-        String baseUrl = getBaseUrl();
-        if (baseUrl != null && !baseUrl.isEmpty()) {
-            driver.get(baseUrl);
-            SeleniumUtils.waitForPageLoad(driver);
-        }
-
         // Log step in SauceLabs
         SauceLabsUtils.logStep(driver, method.getName());
     }
