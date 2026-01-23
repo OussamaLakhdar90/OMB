@@ -18,6 +18,10 @@ import java.util.Properties;
  * - src/main/resources/pages/{pageName}_{language}.properties
  * - src/main/resources/{pageName}_{language}.properties
  *
+ * Property keys should be prefixed with the page class name (camelCase):
+ * loginPage.username.label=Username
+ * loginPage.password.label=Password
+ *
  * Usage in Page Object:
  * <pre>
  * public class LoginPage extends PageObject {
@@ -29,6 +33,7 @@ import java.util.Properties;
  *     }
  *
  *     public String getUsernameLabel() {
+ *         // Looks up "loginPage.username.label" automatically
  *         return resource.get("username.label");
  *     }
  * }
@@ -45,6 +50,9 @@ public class ResourcesClass {
 
     @Getter
     private final String language;
+
+    @Getter
+    private final String prefix;
 
     private final Object pageObject;
 
@@ -72,8 +80,28 @@ public class ResourcesClass {
         this.resourceFileName = resourceFileName;
         this.language = language != null && !language.isEmpty() ? language : DEFAULT_LANGUAGE;
         this.pageObject = obj;
+        this.prefix = derivePrefix(obj);
         this.properties = new Properties();
         loadProperties();
+    }
+
+    /**
+     * Derives the property key prefix from the page object's class name.
+     * Converts class name to camelCase (e.g., LoginPage -> loginPage).
+     *
+     * @param obj the page object
+     * @return the prefix string
+     */
+    private String derivePrefix(Object obj) {
+        if (obj == null) {
+            return "";
+        }
+        String className = obj.getClass().getSimpleName();
+        if (className.isEmpty()) {
+            return "";
+        }
+        // Convert first letter to lowercase (LoginPage -> loginPage)
+        return Character.toLowerCase(className.charAt(0)) + className.substring(1);
     }
 
     /**
@@ -140,38 +168,84 @@ public class ResourcesClass {
 
     /**
      * Gets a property value by key.
+     * Automatically prepends the page prefix to the key.
+     * Example: For LoginPage, get("username.label") looks up "loginPage.username.label"
      *
-     * @param key the property key
-     * @return the property value, or the key itself if not found
+     * @param key the property key (without prefix)
+     * @return the property value, or the full key if not found
      */
     public String get(String key) {
-        String value = properties.getProperty(key);
+        String fullKey = buildFullKey(key);
+        String value = properties.getProperty(fullKey);
         if (value == null) {
-            log.warn("Property not found: {} in {}", key, buildFileName());
-            return key; // Return key as fallback to make debugging easier
+            // Try without prefix as fallback
+            value = properties.getProperty(key);
+            if (value == null) {
+                log.warn("Property not found: {} (tried {} and {}) in {}",
+                        key, fullKey, key, buildFileName());
+                return fullKey; // Return full key as fallback to make debugging easier
+            }
         }
         return value;
     }
 
     /**
      * Gets a property value by key with a default value.
+     * Automatically prepends the page prefix to the key.
      *
-     * @param key          the property key
+     * @param key          the property key (without prefix)
      * @param defaultValue the default value if key not found
      * @return the property value or default value
      */
     public String get(String key, String defaultValue) {
-        return properties.getProperty(key, defaultValue);
+        String fullKey = buildFullKey(key);
+        String value = properties.getProperty(fullKey);
+        if (value == null) {
+            // Try without prefix as fallback
+            value = properties.getProperty(key, defaultValue);
+        }
+        return value;
+    }
+
+    /**
+     * Gets a property value by full key (without adding prefix).
+     * Use this when you want to access a key that doesn't follow the prefix pattern.
+     *
+     * @param fullKey the complete property key
+     * @return the property value, or the key itself if not found
+     */
+    public String getByFullKey(String fullKey) {
+        String value = properties.getProperty(fullKey);
+        if (value == null) {
+            log.warn("Property not found: {} in {}", fullKey, buildFileName());
+            return fullKey;
+        }
+        return value;
+    }
+
+    /**
+     * Builds the full property key by prepending the prefix.
+     *
+     * @param key the key without prefix
+     * @return the full key with prefix (e.g., "loginPage.username.label")
+     */
+    private String buildFullKey(String key) {
+        if (prefix == null || prefix.isEmpty()) {
+            return key;
+        }
+        return prefix + "." + key;
     }
 
     /**
      * Checks if a property key exists.
+     * Checks both with and without the page prefix.
      *
-     * @param key the property key
+     * @param key the property key (without prefix)
      * @return true if key exists
      */
     public boolean containsKey(String key) {
-        return properties.containsKey(key);
+        String fullKey = buildFullKey(key);
+        return properties.containsKey(fullKey) || properties.containsKey(key);
     }
 
     /**
@@ -230,7 +304,7 @@ public class ResourcesClass {
 
     @Override
     public String toString() {
-        return String.format("ResourcesClass[file=%s, language=%s, properties=%d]",
-            resourceFileName, language, properties.size());
+        return String.format("ResourcesClass[file=%s, language=%s, prefix=%s, properties=%d]",
+            resourceFileName, language, prefix, properties.size());
     }
 }

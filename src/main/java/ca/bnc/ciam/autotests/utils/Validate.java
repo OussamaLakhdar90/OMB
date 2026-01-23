@@ -1,5 +1,6 @@
 package ca.bnc.ciam.autotests.utils;
 
+import ca.bnc.ciam.autotests.web.elements.IElement;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebElement;
 
@@ -34,6 +35,14 @@ public final class Validate {
      */
     public static boolean isFailOnError() {
         return failOnError;
+    }
+
+    /**
+     * Alias for setFailOnError - controls whether assertions are called.
+     * When false, methods return boolean results without throwing exceptions.
+     */
+    public static void setCallAssert(boolean callAssert) {
+        failOnError = callAssert;
     }
 
     /**
@@ -213,30 +222,544 @@ public final class Validate {
             }
         }
 
+        // ==================== exists() methods ====================
+
         /**
          * Validate that a WebElement exists (is not null and is displayed).
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         * @return true if element exists and is displayed, false otherwise
          */
-        public static void exists(WebElement element, String verificationContext) {
+        public static boolean exists(WebElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
                 log.info("Validating element exists: {}", verificationContext);
                 try {
-                    assertThat(element)
-                            .as(verificationContext + " - element not null")
-                            .isNotNull();
-                    assertThat(element.isDisplayed())
-                            .as(verificationContext + " - element is displayed")
-                            .isTrue();
-                    log.info("PASS: {}", verificationContext);
-                } catch (AssertionError e) {
-                    log.error("FAIL: {} - Element does not exist or is not displayed", verificationContext);
-                    if (failOnError) {
-                        throw e;
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
                     }
+                    boolean displayed = element.isDisplayed();
+                    if (displayed) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Element is not displayed", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is not displayed");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
                 } catch (Exception e) {
                     log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
                     if (failOnError) {
                         throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
                     }
+                    return false;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement exists (is not null and is displayed).
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         * @return true if element exists and is displayed, false otherwise
+         */
+        public static boolean exists(IElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement exists: {}", verificationContext);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    boolean displayed = element.isDisplayed();
+                    if (displayed) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - IElement is not displayed", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is not displayed");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== notExists() methods ====================
+
+        /**
+         * Validate that a WebElement does not exist (is null or not displayed).
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         * @return true if element is null or not displayed, false otherwise
+         */
+        public static boolean notExists(WebElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element not exists: {}", verificationContext);
+                try {
+                    if (element == null) {
+                        log.info("PASS: {} - Element is null", verificationContext);
+                        return true;
+                    }
+                    boolean displayed = element.isDisplayed();
+                    if (!displayed) {
+                        log.info("PASS: {} - Element is not displayed", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Element exists and is displayed", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element exists and is displayed");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    // Element not found or stale - that's a pass for notExists
+                    log.info("PASS: {} - Element not accessible: {}", verificationContext, e.getMessage());
+                    return true;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement does not exist (is null or not displayed).
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         * @return true if element is null or not displayed, false otherwise
+         */
+        public static boolean notExists(IElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement not exists: {}", verificationContext);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.info("PASS: {} - IElement is null", verificationContext);
+                        return true;
+                    }
+                    boolean displayed = element.isDisplayed();
+                    if (!displayed) {
+                        log.info("PASS: {} - IElement is not displayed", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - IElement exists and is displayed", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement exists and is displayed");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.info("PASS: {} - IElement not accessible: {}", verificationContext, e.getMessage());
+                    return true;
+                }
+            }
+        }
+
+        // ==================== isEnabled() methods ====================
+
+        /**
+         * Validate that a WebElement is enabled.
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         * @return true if element is enabled, false otherwise
+         */
+        public static boolean isEnabled(WebElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element is enabled: {}", verificationContext);
+                try {
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
+                    }
+                    boolean enabled = element.isEnabled();
+                    if (enabled) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Element is not enabled", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is not enabled");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement is enabled.
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         * @return true if element is enabled, false otherwise
+         */
+        public static boolean isEnabled(IElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement is enabled: {}", verificationContext);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    boolean enabled = element.isEnabled();
+                    if (enabled) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - IElement is not enabled", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is not enabled");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== isDisabled() methods ====================
+
+        /**
+         * Validate that a WebElement is disabled.
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         * @return true if element is disabled, false otherwise
+         */
+        public static boolean isDisabled(WebElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element is disabled: {}", verificationContext);
+                try {
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
+                    }
+                    boolean enabled = element.isEnabled();
+                    if (!enabled) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Element is enabled", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is enabled");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement is disabled.
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         * @return true if element is disabled, false otherwise
+         */
+        public static boolean isDisabled(IElement element, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement is disabled: {}", verificationContext);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    boolean enabled = element.isEnabled();
+                    if (!enabled) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - IElement is enabled", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is enabled");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== hasText() methods ====================
+
+        /**
+         * Validate that a WebElement has specific text.
+         *
+         * @param element the WebElement to check
+         * @param expectedText the expected text
+         * @param verificationContext description for logging
+         * @return true if element text matches expected, false otherwise
+         */
+        public static boolean hasText(WebElement element, String expectedText, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element has text: {} - Expected: [{}]", verificationContext, expectedText);
+                try {
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
+                    }
+                    String actualText = element.getText();
+                    if (expectedText.equals(actualText)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expectedText, actualText);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Text mismatch. Expected: [" + expectedText + "], Actual: [" + actualText + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement has specific text.
+         *
+         * @param element the IElement to check
+         * @param expectedText the expected text
+         * @param verificationContext description for logging
+         * @return true if element text matches expected, false otherwise
+         */
+        public static boolean hasText(IElement element, String expectedText, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement has text: {} - Expected: [{}]", verificationContext, expectedText);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    String actualText = element.getText();
+                    if (expectedText.equals(actualText)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expectedText, actualText);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Text mismatch. Expected: [" + expectedText + "], Actual: [" + actualText + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== containsText() methods ====================
+
+        /**
+         * Validate that a WebElement contains specific text.
+         *
+         * @param element the WebElement to check
+         * @param substring the text to search for
+         * @param verificationContext description for logging
+         * @return true if element text contains substring, false otherwise
+         */
+        public static boolean containsText(WebElement element, String substring, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element contains text: {} - Substring: [{}]", verificationContext, substring);
+                try {
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
+                    }
+                    String actualText = element.getText();
+                    if (actualText != null && actualText.contains(substring)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Text [{}] does not contain [{}]", verificationContext, actualText, substring);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Text [" + actualText + "] does not contain [" + substring + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement contains specific text.
+         *
+         * @param element the IElement to check
+         * @param substring the text to search for
+         * @param verificationContext description for logging
+         * @return true if element text contains substring, false otherwise
+         */
+        public static boolean containsText(IElement element, String substring, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement contains text: {} - Substring: [{}]", verificationContext, substring);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    String actualText = element.getText();
+                    if (actualText != null && actualText.contains(substring)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Text [{}] does not contain [{}]", verificationContext, actualText, substring);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Text [" + actualText + "] does not contain [" + substring + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== hasAttribute() methods ====================
+
+        /**
+         * Validate that a WebElement has a specific attribute value.
+         *
+         * @param element the WebElement to check
+         * @param attributeName the attribute name
+         * @param expectedValue the expected attribute value
+         * @param verificationContext description for logging
+         * @return true if attribute matches expected value, false otherwise
+         */
+        public static boolean hasAttribute(WebElement element, String attributeName, String expectedValue, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating element has attribute: {} - Attribute: [{}], Expected: [{}]", verificationContext, attributeName, expectedValue);
+                try {
+                    if (element == null) {
+                        log.error("FAIL: {} - Element is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Element is null");
+                        }
+                        return false;
+                    }
+                    String actualValue = element.getAttribute(attributeName);
+                    if (expectedValue.equals(actualValue)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Attribute [{}]: Expected: [{}], Actual: [{}]", verificationContext, attributeName, expectedValue, actualValue);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Attribute [" + attributeName + "] mismatch. Expected: [" + expectedValue + "], Actual: [" + actualValue + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking element: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - Element check failed: " + e.getMessage(), e);
+                    }
+                    return false;
                 }
             }
         }
