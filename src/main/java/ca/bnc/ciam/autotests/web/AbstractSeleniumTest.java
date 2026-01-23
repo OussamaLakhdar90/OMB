@@ -23,11 +23,118 @@ import java.util.List;
 /**
  * Base class for Selenium-based UI tests.
  * Provides WebDriver lifecycle management and common UI testing utilities.
+ *
+ * Usage with runApplication():
+ * <pre>
+ * public class MyTest extends AbstractSeleniumTest {
+ *     &#64;Test
+ *     public void t000_Start_Application() {
+ *         runApplication();  // Uses getBaseUrl()
+ *         // or
+ *         runApplication("https://custom-url.com");
+ *     }
+ * }
+ * </pre>
  */
 @Slf4j
 public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
 
     protected WebDriver driver;
+    protected WebConfig webConfig;
+
+    private static final Duration IMPLICIT_WAIT = Duration.ofSeconds(10);
+    private static final Duration PAGE_LOAD_TIMEOUT = Duration.ofSeconds(30);
+
+    // ==================== runApplication - Main Entry Point ====================
+
+    /**
+     * Run the application - initializes driver and navigates to URL.
+     * This is the main entry point for starting tests.
+     *
+     * URL resolution order:
+     * 1. System property "bnc.web.app.url" (pipeline/SauceLabs)
+     * 2. getBaseUrl() from subclass
+     *
+     * Call this from t000_Start_Application() in test classes.
+     */
+    protected void runApplication() {
+        String url = buildURL();
+        runApplication(url);
+    }
+
+    /**
+     * Run the application with a specific URL.
+     *
+     * @param url The URL to navigate to
+     */
+    protected void runApplication(String url) {
+        log.info("Running application with URL: {}", url);
+        initializeDriver();
+        driver.get(url);
+        SeleniumUtils.waitForPageLoad(driver);
+        log.info("Application started at: {}", driver.getCurrentUrl());
+    }
+
+    /**
+     * Build the application URL.
+     * Override in subclass if custom URL logic is needed.
+     *
+     * @return The application URL
+     */
+    protected String buildURL() {
+        // Priority 1: System property (pipeline execution)
+        String appUrl = System.getProperty("bnc.web.app.url");
+        if (appUrl != null && !appUrl.isEmpty()) {
+            log.info("Using URL from system property: {}", appUrl);
+            return appUrl;
+        }
+
+        // Priority 2: testData (data-driven URL)
+        if (testData != null && testData.containsKey("_app_url")) {
+            String dataUrl = testData.get("_app_url");
+            if (dataUrl != null && !dataUrl.isEmpty()) {
+                log.info("Using URL from testData: {}", dataUrl);
+                return dataUrl;
+            }
+        }
+
+        // Priority 3: getBaseUrl() from subclass
+        String baseUrl = getBaseUrl();
+        log.info("Using base URL: {}", baseUrl);
+        return baseUrl;
+    }
+
+    /**
+     * Initialize the WebDriver if not already initialized.
+     */
+    protected void initializeDriver() {
+        if (driver == null) {
+            log.info("Initializing WebDriver");
+            webConfig = getWebConfig();
+
+            // Set test/build name for SauceLabs
+            if (webConfig.getExecutionMode() == ExecutionMode.SAUCELABS) {
+                webConfig = WebConfig.builder()
+                        .browserType(webConfig.getBrowserType())
+                        .executionMode(webConfig.getExecutionMode())
+                        .headless(webConfig.isHeadless())
+                        .sauceUsername(webConfig.getSauceUsername())
+                        .sauceAccessKey(webConfig.getSauceAccessKey())
+                        .testName(this.getClass().getSimpleName())
+                        .buildName(System.getProperty("sauce.buildName", "Local Build"))
+                        .build();
+            }
+
+            driver = WebDriverFactory.createDriver(webConfig);
+            driver.manage().timeouts().implicitlyWait(IMPLICIT_WAIT);
+            driver.manage().timeouts().pageLoadTimeout(PAGE_LOAD_TIMEOUT);
+            driver.manage().window().maximize();
+            log.info("WebDriver initialized - Browser: {}, Headless: {}",
+                    webConfig.getBrowserType(), webConfig.isHeadless());
+        }
+    }
+
+    // ==================== Configuration ====================
 
     /**
      * Get the WebConfig for this test class.
@@ -63,32 +170,36 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
     }
 
     /**
+     * Get language for testing. Override to customize.
+     * Checks testData, system property, or defaults to "en".
+     */
+    protected String getLanguage() {
+        // Priority 1: testData
+        if (testData != null && testData.containsKey("_lang")) {
+            return testData.get("_lang");
+        }
+        // Priority 2: System property
+        String lang = System.getProperty("bnc.web.gui.lang");
+        if (lang != null && !lang.isEmpty()) {
+            return lang;
+        }
+        // Priority 3: Default
+        return "en";
+    }
+
+    /**
      * Get the base URL for tests. Override in subclass.
      */
     protected abstract String getBaseUrl();
 
     /**
      * Initialize WebDriver before test class.
+     * Note: If using runApplication(), driver will be initialized there instead.
      */
     @BeforeClass(alwaysRun = true)
     public void setUpDriver() {
         log.info("Setting up WebDriver for test class: {}", this.getClass().getSimpleName());
-        WebConfig config = getWebConfig();
-
-        // Set test/build name for SauceLabs
-        if (config.getExecutionMode() == ExecutionMode.SAUCELABS) {
-            config = WebConfig.builder()
-                    .browserType(config.getBrowserType())
-                    .executionMode(config.getExecutionMode())
-                    .headless(config.isHeadless())
-                    .sauceUsername(config.getSauceUsername())
-                    .sauceAccessKey(config.getSauceAccessKey())
-                    .testName(this.getClass().getSimpleName())
-                    .buildName(System.getProperty("sauce.buildName", "Local Build"))
-                    .build();
-        }
-
-        driver = WebDriverFactory.createDriver(config);
+        initializeDriver();
     }
 
     /**
