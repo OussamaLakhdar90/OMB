@@ -15,7 +15,9 @@ import org.testng.ITestResult;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Base class for Selenium-based UI tests.
@@ -83,6 +85,57 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      */
     protected boolean hasTestData() {
         return testData != null && testData.getDataMap() != null && !testData.getDataMap().isEmpty();
+    }
+
+    // ==================== DataProvider Helpers ====================
+
+    /**
+     * Convert Collection<Object[]> to Object[][] for TestNG @DataProvider.
+     * Use this in your @DataProvider method when buildEnvironments returns Collection.
+     *
+     * Example:
+     * <pre>
+     * &#64;DataProvider(name = "environments")
+     * public static Object[][] environments() {
+     *     return toDataProviderArray(buildEnvironments(testId));
+     * }
+     * </pre>
+     *
+     * @param collection the collection from buildEnvironments
+     * @return Object[][] for TestNG DataProvider
+     */
+    protected static Object[][] toDataProviderArray(Collection<Object[]> collection) {
+        if (collection == null || collection.isEmpty()) {
+            return new Object[0][];
+        }
+        return collection.toArray(new Object[collection.size()][]);
+    }
+
+    /**
+     * Convert Collection<Map> to Object[][] for TestNG @DataProvider.
+     * Use this when buildEnvironments returns Collection of Maps.
+     *
+     * Example:
+     * <pre>
+     * &#64;DataProvider(name = "environments")
+     * public static Object[][] environments() {
+     *     return toDataProviderArrayFromMaps(buildEnvironments(testId));
+     * }
+     * </pre>
+     *
+     * @param collection the collection of Maps from buildEnvironments
+     * @return Object[][] for TestNG DataProvider
+     */
+    protected static Object[][] toDataProviderArrayFromMaps(Collection<? extends Map<String, String>> collection) {
+        if (collection == null || collection.isEmpty()) {
+            return new Object[0][];
+        }
+        Object[][] result = new Object[collection.size()][1];
+        int i = 0;
+        for (Map<String, String> map : collection) {
+            result[i++] = new Object[]{map};
+        }
+        return result;
     }
 
     // ==================== runApplication - Main Entry Point ====================

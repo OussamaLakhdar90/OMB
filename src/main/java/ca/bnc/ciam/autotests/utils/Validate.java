@@ -765,11 +765,122 @@ public final class Validate {
         }
 
         /**
+         * Validate that an IElement has a specific attribute value.
+         *
+         * @param element the IElement to check
+         * @param attributeName the attribute name
+         * @param expectedValue the expected attribute value
+         * @param verificationContext description for logging
+         * @return true if attribute matches expected value, false otherwise
+         */
+        public static boolean hasAttribute(IElement element, String attributeName, String expectedValue, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Validating IElement has attribute: {} - Attribute: [{}], Expected: [{}]", verificationContext, attributeName, expectedValue);
+                try {
+                    if (element == null || element.isNull()) {
+                        log.error("FAIL: {} - IElement is null", verificationContext);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - IElement is null");
+                        }
+                        return false;
+                    }
+                    String actualValue = element.getAttribute(attributeName);
+                    if (expectedValue.equals(actualValue)) {
+                        log.info("PASS: {}", verificationContext);
+                        return true;
+                    } else {
+                        log.error("FAIL: {} - Attribute [{}]: Expected: [{}], Actual: [{}]", verificationContext, attributeName, expectedValue, actualValue);
+                        if (failOnError) {
+                            throw new AssertionError(verificationContext + " - Attribute [" + attributeName + "] mismatch. Expected: [" + expectedValue + "], Actual: [" + actualValue + "]");
+                        }
+                        return false;
+                    }
+                } catch (AssertionError e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("FAIL: {} - Error checking IElement: {}", verificationContext, e.getMessage());
+                    if (failOnError) {
+                        throw new AssertionError(verificationContext + " - IElement check failed: " + e.getMessage(), e);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // ==================== existsWaitSeconds() methods ====================
+
+        /**
          * Validate that a WebElement exists with specified wait time.
+         * Polls until element is displayed or timeout is reached.
          */
         public static void existsWaitSeconds(WebElement element, int waitSeconds, String verificationContext) {
-            // For now, delegate to exists - wait logic can be added if needed
-            exists(element, verificationContext);
+            synchronized (SYNC_LOCK) {
+                log.info("Waiting for element to exist: {} (timeout: {}s)", verificationContext, waitSeconds);
+                long startTime = System.currentTimeMillis();
+                long timeoutMillis = waitSeconds * 1000L;
+
+                while (System.currentTimeMillis() - startTime < timeoutMillis) {
+                    try {
+                        if (element != null && element.isDisplayed()) {
+                            log.info("PASS: {} - Element displayed after {}ms",
+                                    verificationContext, System.currentTimeMillis() - startTime);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        // Element not ready yet, continue polling
+                    }
+
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+
+                // Timeout reached
+                log.error("FAIL: {} - Element not displayed after {}s", verificationContext, waitSeconds);
+                if (failOnError) {
+                    throw new AssertionError(verificationContext + " - Element not displayed after " + waitSeconds + " seconds");
+                }
+            }
+        }
+
+        /**
+         * Validate that an IElement exists with specified wait time.
+         * Polls until element is displayed or timeout is reached.
+         */
+        public static void existsWaitSeconds(IElement element, int waitSeconds, String verificationContext) {
+            synchronized (SYNC_LOCK) {
+                log.info("Waiting for IElement to exist: {} (timeout: {}s)", verificationContext, waitSeconds);
+                long startTime = System.currentTimeMillis();
+                long timeoutMillis = waitSeconds * 1000L;
+
+                while (System.currentTimeMillis() - startTime < timeoutMillis) {
+                    try {
+                        if (element != null && !element.isNull() && element.isDisplayed()) {
+                            log.info("PASS: {} - IElement displayed after {}ms",
+                                    verificationContext, System.currentTimeMillis() - startTime);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        // Element not ready yet, continue polling
+                    }
+
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+
+                // Timeout reached
+                log.error("FAIL: {} - IElement not displayed after {}s", verificationContext, waitSeconds);
+                if (failOnError) {
+                    throw new AssertionError(verificationContext + " - IElement not displayed after " + waitSeconds + " seconds");
+                }
+            }
         }
 
         // ==================== doesNotExistWaitSeconds() methods ====================
