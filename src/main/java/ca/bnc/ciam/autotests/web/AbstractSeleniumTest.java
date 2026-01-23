@@ -92,8 +92,9 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
         }
 
         // Priority 2: testData (data-driven URL)
-        if (testData != null && testData.containsKey("_app_url")) {
-            String dataUrl = testData.get("_app_url");
+        var data = getTestData();
+        if (data != null && data.containsKey("_app_url")) {
+            String dataUrl = data.get("_app_url");
             if (dataUrl != null && !dataUrl.isEmpty()) {
                 log.info("Using URL from testData _app_url: {}", dataUrl);
                 return dataUrl;
@@ -193,8 +194,9 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
      */
     protected String getLanguage() {
         // Priority 1: testData
-        if (testData != null && testData.containsKey("_lang")) {
-            return testData.get("_lang");
+        var data = getTestData();
+        if (data != null && data.containsKey("_lang")) {
+            return data.get("_lang");
         }
         // Priority 2: System property
         String lang = System.getProperty("bnc.web.gui.lang");
