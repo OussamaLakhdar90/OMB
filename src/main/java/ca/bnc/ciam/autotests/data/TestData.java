@@ -1,6 +1,7 @@
 package ca.bnc.ciam.autotests.data;
 
 import ca.bnc.ciam.autotests.exception.TestDataException;
+import ca.bnc.ciam.autotests.transformer.DataTransformer;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,6 +18,7 @@ public class TestData {
     private Map<String, String> testDataMap;
     private String sourceFile;
     private int index = 1;
+    private static final DataTransformer dataTransformer = new DataTransformer();
 
     /**
      * Create a TestData instance with the test data map.
@@ -63,17 +65,21 @@ public class TestData {
 
     /**
      * Get a string value for the specified key.
+     * Automatically transforms sensitive values (e.g., $sensitive:ENV_VAR_NAME)
+     * to their actual values from environment variables.
      *
      * @param key The data key
-     * @return The string value
+     * @return The string value (transformed if sensitive)
      */
     public String getForKey(String key) {
         String fullKey = buildKey(key);
         String value = testDataMap.get(fullKey);
         if (value == null) {
             log.warn("Test data not found for key: {}", fullKey);
+            return null;
         }
-        return value;
+        // Transform sensitive values to resolve environment variables
+        return dataTransformer.transform(value);
     }
 
     /**
