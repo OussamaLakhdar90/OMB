@@ -76,11 +76,16 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
             options.addArguments("--auto-open-devtools-for-tabs");
         }
 
-        // Preferences
+        // Preferences - disable password manager and autofill popups
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("profile.default_content_setting_values.notifications", 2);
+        // Disable password manager completely
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
+        prefs.put("profile.password_manager_leak_detection", false);
+        // Disable autofill
+        prefs.put("autofill.profile_enabled", false);
+        prefs.put("autofill.credit_card_enabled", false);
         options.setExperimentalOption("prefs", prefs);
 
         // Exclude automation flags
