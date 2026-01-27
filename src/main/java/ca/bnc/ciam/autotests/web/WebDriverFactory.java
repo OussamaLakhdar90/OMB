@@ -226,4 +226,111 @@ public class WebDriverFactory {
 
         return createDriver(configBuilder.build());
     }
+
+    /**
+     * Create a WebDriver for pipeline execution.
+     * Uses context.json properties: bnc.test.hub.use, bnc.test.hub.url, bnc.test.hub.name, bnc.web.browsers.config
+     *
+     * @param testName Test name for reporting
+     * @return WebDriver configured for pipeline
+     */
+    public static WebDriver createDriverForPipeline(String testName) {
+        boolean useHub = Boolean.parseBoolean(System.getProperty("bnc.test.hub.use", "false"));
+        String hubUrl = System.getProperty("bnc.test.hub.url");
+        String tunnelName = System.getProperty("bnc.test.hub.name");
+        String browserConfigPath = System.getProperty("bnc.web.browsers.config");
+
+        log.info("Creating pipeline driver: useHub={}, hubUrl={}, tunnelName={}, browserConfig={}",
+                useHub, hubUrl != null ? "***" : null, tunnelName, browserConfigPath);
+
+        if (useHub && hubUrl != null && !hubUrl.isEmpty()) {
+            // SauceLabs execution via tunnel
+            return createSauceLabsDriverFromPipeline(hubUrl, tunnelName, browserConfigPath, testName);
+        } else {
+            // Local execution on pipeline agent
+            return createLocalPipelineDriver(browserConfigPath, testName);
+        }
+    }
+
+    /**
+     * Create a SauceLabs driver for pipeline execution.
+     */
+    private static WebDriver createSauceLabsDriverFromPipeline(String hubUrl, String tunnelName,
+                                                                String browserConfigPath, String testName) {
+        // Get browser type from config or default
+        BrowserType browserType = getBrowserFromConfig(browserConfigPath);
+
+        // Get sauce credentials
+        String sauceUsername = System.getProperty("sauce.username", System.getenv("SAUCE_USERNAME"));
+        String sauceAccessKey = System.getProperty("sauce.accessKey", System.getenv("SAUCE_ACCESS_KEY"));
+
+        // Get tunnel owner (parentTunnel) - loaded from browser config or system property
+        String tunnelOwner = System.getProperty("bnc.test.hub.owner");
+
+        WebConfig config = WebConfig.builder()
+                .browserType(browserType)
+                .executionMode(ExecutionMode.SAUCELABS)
+                .useHub(true)
+                .hubUrl(hubUrl)
+                .tunnelName(tunnelName)
+                .tunnelOwner(tunnelOwner)
+                .browserConfigPath(browserConfigPath)
+                .sauceUsername(sauceUsername)
+                .sauceAccessKey(sauceAccessKey)
+                .testName(testName)
+                .buildName(System.getProperty("sauce.buildName", "Pipeline Build"))
+                .build();
+
+        return createDriver(config);
+    }
+
+    /**
+     * Create a local driver for pipeline agent execution.
+     */
+    private static WebDriver createLocalPipelineDriver(String browserConfigPath, String testName) {
+        BrowserType browserType = getBrowserFromConfig(browserConfigPath);
+
+        WebConfig config = WebConfig.builder()
+                .browserType(browserType)
+                .executionMode(ExecutionMode.LOCAL)
+                .browserConfigPath(browserConfigPath)
+                .headless(Boolean.parseBoolean(System.getProperty("headless", "true"))) // Default headless for pipeline
+                .build();
+
+        return createDriver(config);
+    }
+
+    /**
+     * Get browser type from browser config file.
+     */
+    private static BrowserType getBrowserFromConfig(String browserConfigPath) {
+        if (browserConfigPath != null && !browserConfigPath.isEmpty()) {
+            try {
+                var browserConfig = ca.bnc.ciam.autotests.web.config.BrowserConfigLoader.getInstance()
+                        .loadPipelineConfig(browserConfigPath);
+                String browserName = browserConfig.getBrowserName();
+                if (browserName != null && !browserName.isEmpty()) {
+                    return BrowserType.fromString(browserName);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get browser from config {}: {}", browserConfigPath, e.getMessage());
+            }
+        }
+        return getBrowserFromEnvironment();
+    }
+
+    /**
+     * Check if pipeline mode is enabled.
+     * Pipeline mode uses bnc.test.hub.use property.
+     */
+    public static boolean isPipelineMode() {
+        return Boolean.parseBoolean(System.getProperty("bnc.test.hub.use", "false"));
+    }
+
+    /**
+     * Check if using SauceLabs hub.
+     */
+    public static boolean isUsingSauceLabsHub() {
+        return isPipelineMode() && System.getProperty("bnc.test.hub.url") != null;
+    }
 }

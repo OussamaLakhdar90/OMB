@@ -4,6 +4,9 @@ import ca.bnc.ciam.autotests.annotation.DependentStep;
 import ca.bnc.ciam.autotests.annotation.SkipVisualCheck;
 import ca.bnc.ciam.autotests.annotation.VisualCheckpoint;
 import ca.bnc.ciam.autotests.annotation.Xray;
+import ca.bnc.ciam.autotests.metrics.MetricsCollector;
+import ca.bnc.ciam.autotests.metrics.MetricsReportGenerator;
+import ca.bnc.ciam.autotests.metrics.TestMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.testng.IMethodInstance;
 import org.testng.IMethodInterceptor;
@@ -13,6 +16,7 @@ import org.testng.ITestResult;
 import org.testng.SkipException;
 
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -26,14 +30,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Automatic dependency checking via @DependentStep annotation
  * - Visual checkpoint handling
  * - Test lifecycle logging
+ * - Automatic test report generation (HTML, JSON, CSV)
  *
  * Dependency checking works automatically:
  * - Tests with @DependentStep are skipped if ANY previous test in the class failed
  * - Tests with @DependentStep(value="methodName") are skipped if that specific method failed
  * - No manual calls needed in test code
+ *
+ * Reports are generated automatically at suite completion:
+ * - Output: target/metrics/test-report-latest.html (and .json, .csv)
+ * - Disable: Set system property bnc.metrics.enabled=false
  */
 @Slf4j
 public class TestngListener implements ITestListener, IMethodInterceptor {
+
+    private static final String METRICS_ENABLED_PROPERTY = "bnc.metrics.enabled";
 
     /**
      * Tracks failed methods per test class for dependency checking.
@@ -51,6 +62,13 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
      * Stores the start time of each test for duration calculation.
      */
     private static final Map<String, Long> testStartTimes = new ConcurrentHashMap<>();
+
+    /**
+     * Check if metrics collection is enabled.
+     */
+    private static boolean isMetricsEnabled() {
+        return !"false".equalsIgnoreCase(System.getProperty(METRICS_ENABLED_PROPERTY));
+    }
 
     /**
      * Intercept and reorder test methods to run in lexicographic order.
@@ -79,6 +97,11 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
     public void onTestStart(ITestResult result) {
         String testKey = getTestKey(result);
         testStartTimes.put(testKey, System.currentTimeMillis());
+
+        // Record metrics
+        if (isMetricsEnabled()) {
+            MetricsCollector.getInstance().startTest(result);
+        }
 
         Method method = result.getMethod().getConstructorOrMethod().getMethod();
         String className = result.getTestClass().getName();
@@ -146,6 +169,11 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
         recordMethodResult(result, true);
         long duration = calculateDuration(result);
 
+        // Record metrics
+        if (isMetricsEnabled()) {
+            MetricsCollector.getInstance().endTest(result);
+        }
+
         log.info("=".repeat(80));
         log.info("TEST PASSED: {}.{} ({}ms)",
                 result.getTestClass().getName(),
@@ -159,6 +187,11 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
         recordMethodResult(result, false);
         markClassAsFailed(result);
         long duration = calculateDuration(result);
+
+        // Record metrics
+        if (isMetricsEnabled()) {
+            MetricsCollector.getInstance().endTest(result);
+        }
 
         log.error("=".repeat(80));
         log.error("TEST FAILED: {}.{} ({}ms)",
@@ -177,6 +210,11 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
     @Override
     public void onTestSkipped(ITestResult result) {
         recordMethodResult(result, false);
+
+        // Record metrics
+        if (isMetricsEnabled()) {
+            MetricsCollector.getInstance().endTest(result);
+        }
 
         log.warn("=".repeat(80));
         log.warn("TEST SKIPPED: {}.{}",
@@ -207,6 +245,12 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
 
         // Reset failure tracking for new suite
         classHasFailure.clear();
+
+        // Initialize metrics collection
+        if (isMetricsEnabled()) {
+            MetricsCollector.getInstance().startSuite(context);
+            log.info("Metrics collection enabled - reports will be generated at suite completion");
+        }
     }
 
     @Override
@@ -224,9 +268,42 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
                 total > 0 ? String.format("%.1f", (passed * 100.0) / total) : "N/A");
         log.info("#".repeat(80));
 
+        // Generate reports
+        if (isMetricsEnabled()) {
+            generateReports(context);
+        }
+
         // Clear results
         classMethodResults.clear();
         classHasFailure.clear();
+    }
+
+    /**
+     * Generate test reports in all formats (HTML, JSON, CSV).
+     */
+    private void generateReports(ITestContext context) {
+        try {
+            TestMetrics metrics = MetricsCollector.getInstance().endSuite(context);
+            if (metrics == null) {
+                log.warn("No metrics collected - skipping report generation");
+                return;
+            }
+
+            MetricsReportGenerator generator = new MetricsReportGenerator();
+            Map<String, Path> reports = generator.generateReports(metrics);
+
+            log.info("#".repeat(80));
+            log.info("TEST REPORTS GENERATED:");
+            for (Map.Entry<String, Path> entry : reports.entrySet()) {
+                log.info("  {} -> {}", entry.getKey().toUpperCase(), entry.getValue());
+            }
+            log.info("#".repeat(80));
+
+        } catch (Exception e) {
+            log.error("Failed to generate test reports: {}", e.getMessage(), e);
+        } finally {
+            MetricsCollector.getInstance().reset();
+        }
     }
 
     /**

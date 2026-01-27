@@ -224,6 +224,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                                 <th>Status</th>
                                 <th>Diff %%</th>
                                 <th>Tolerance %%</th>
+                                <th>Diff Image</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -231,6 +232,21 @@ public class HtmlMetricsExporter implements MetricsExporter {
 
             for (TestMetrics.VisualMetric vm : metrics.getVisualMetrics()) {
                 String statusClass = vm.isMatched() ? "status-passed" : "status-failed";
+                String diffImageHtml;
+                if (vm.getDiffImagePath() != null && !vm.getDiffImagePath().isEmpty()) {
+                    // Create relative path from report location
+                    String relativePath = vm.getDiffImagePath().replace("\\", "/");
+                    if (relativePath.startsWith("target/metrics/")) {
+                        relativePath = relativePath.substring("target/metrics/".length());
+                    }
+                    diffImageHtml = String.format(
+                        "<a href=\"%s\" target=\"_blank\"><img src=\"%s\" style=\"max-width:150px;max-height:100px;border:1px solid #ddd;cursor:pointer;\" title=\"Click to enlarge\"/></a>",
+                        relativePath, relativePath);
+                } else if (!vm.isMatched()) {
+                    diffImageHtml = "<span style=\"color:#999\">N/A</span>";
+                } else {
+                    diffImageHtml = "<span style=\"color:#28a745\">✓ Match</span>";
+                }
                 html.append("""
                     <tr>
                         <td>%s</td>
@@ -238,6 +254,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                         <td><span class="status %s">%s</span></td>
                         <td>%.4f%%</td>
                         <td>%.4f%%</td>
+                        <td>%s</td>
                     </tr>
                     """.formatted(
                         escapeHtml(vm.getTestName()),
@@ -245,7 +262,8 @@ public class HtmlMetricsExporter implements MetricsExporter {
                         statusClass,
                         vm.getStatus(),
                         vm.getDiffPercentage() * 100,
-                        vm.getTolerance() * 100
+                        vm.getTolerance() * 100,
+                        diffImageHtml
                 ));
             }
 

@@ -223,31 +223,44 @@ public abstract class AbstractSeleniumTest extends AbstractDataDrivenTest {
 
     /**
      * Initialize the WebDriver if not already initialized.
+     * Supports both local and pipeline (SauceLabs) execution modes.
      */
     protected void initializeDriver() {
         if (driver == null) {
             log.info("Initializing WebDriver");
-            webConfig = getWebConfig();
 
-            // Set test/build name for SauceLabs
-            if (webConfig.getExecutionMode() == ExecutionMode.SAUCELABS) {
-                webConfig = WebConfig.builder()
-                        .browserType(webConfig.getBrowserType())
-                        .executionMode(webConfig.getExecutionMode())
-                        .headless(webConfig.isHeadless())
-                        .sauceUsername(webConfig.getSauceUsername())
-                        .sauceAccessKey(webConfig.getSauceAccessKey())
-                        .testName(this.getClass().getSimpleName())
-                        .buildName(System.getProperty("sauce.buildName", "Local Build"))
-                        .build();
+            // Check if pipeline mode (bnc.test.hub.use=true)
+            if (WebDriverFactory.isPipelineMode()) {
+                log.info("Pipeline mode detected - using pipeline configuration");
+                driver = WebDriverFactory.createDriverForPipeline(this.getClass().getSimpleName());
+                webConfig = WebDriverFactory.getConfig();
+            } else {
+                // Local or standard SauceLabs execution
+                webConfig = getWebConfig();
+
+                // Set test/build name for SauceLabs
+                if (webConfig.getExecutionMode() == ExecutionMode.SAUCELABS) {
+                    webConfig = WebConfig.builder()
+                            .browserType(webConfig.getBrowserType())
+                            .executionMode(webConfig.getExecutionMode())
+                            .headless(webConfig.isHeadless())
+                            .sauceUsername(webConfig.getSauceUsername())
+                            .sauceAccessKey(webConfig.getSauceAccessKey())
+                            .testName(this.getClass().getSimpleName())
+                            .buildName(System.getProperty("sauce.buildName", "Local Build"))
+                            .build();
+                }
+
+                driver = WebDriverFactory.createDriver(webConfig);
             }
 
-            driver = WebDriverFactory.createDriver(webConfig);
             driver.manage().timeouts().implicitlyWait(IMPLICIT_WAIT);
             driver.manage().timeouts().pageLoadTimeout(PAGE_LOAD_TIMEOUT);
             driver.manage().window().maximize();
-            log.info("WebDriver initialized - Browser: {}, Headless: {}",
-                    webConfig.getBrowserType(), webConfig.isHeadless());
+            log.info("WebDriver initialized - Browser: {}, Mode: {}, Headless: {}",
+                    webConfig.getBrowserType(),
+                    WebDriverFactory.isPipelineMode() ? "PIPELINE" : webConfig.getExecutionMode(),
+                    webConfig.isHeadless());
         }
     }
 

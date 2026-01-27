@@ -104,6 +104,57 @@ public class WebConfig {
      */
     private String buildName;
 
+    // ==================== Pipeline/Hub Configuration ====================
+
+    /**
+     * Whether to use remote hub (SauceLabs tunnel).
+     * Maps to context.json: bnc.test.hub.use
+     */
+    @Builder.Default
+    private boolean useHub = false;
+
+    /**
+     * Remote hub URL (SauceLabs tunnel URL).
+     * Maps to context.json: bnc.test.hub.url
+     */
+    private String hubUrl;
+
+    /**
+     * Tunnel name for SauceLabs.
+     * Maps to context.json: bnc.test.hub.name or sauce:options.tunnelIdentifier
+     */
+    private String tunnelName;
+
+    /**
+     * Tunnel owner (parent tunnel) for shared tunnels.
+     * Maps to sauce:options.parentTunnel
+     */
+    private String tunnelOwner;
+
+    /**
+     * Path to browser configuration file.
+     * Maps to context.json: bnc.web.browsers.config
+     */
+    private String browserConfigPath;
+
+    /**
+     * Extended debugging for SauceLabs.
+     */
+    @Builder.Default
+    private boolean extendedDebugging = true;
+
+    /**
+     * Screen resolution for SauceLabs.
+     */
+    @Builder.Default
+    private String screenResolution = "1920x1080";
+
+    /**
+     * Idle timeout for SauceLabs (in seconds).
+     */
+    @Builder.Default
+    private int idleTimeout = 300;
+
     /**
      * Path to browser binary (optional, for custom browser installations).
      */
@@ -156,10 +207,40 @@ public class WebConfig {
     }
 
     /**
+     * Create a pipeline configuration using hub URL.
+     *
+     * @param hubUrl     The SauceLabs tunnel URL
+     * @param tunnelName The tunnel name (tunnelIdentifier)
+     * @param tunnelOwner The tunnel owner (parentTunnel)
+     */
+    public static WebConfig pipeline(String hubUrl, String tunnelName, String tunnelOwner) {
+        return WebConfig.builder()
+                .executionMode(ExecutionMode.SAUCELABS)
+                .useHub(true)
+                .hubUrl(hubUrl)
+                .tunnelName(tunnelName)
+                .tunnelOwner(tunnelOwner)
+                .build();
+    }
+
+    /**
      * Get the SauceLabs hub URL.
+     * Priority: 1) Custom hubUrl (pipeline tunnel), 2) Standard SauceLabs URL
      */
     public String getSauceLabsUrl() {
+        // If custom hub URL is set (pipeline mode), use it
+        if (hubUrl != null && !hubUrl.isEmpty()) {
+            return hubUrl;
+        }
+        // Otherwise use standard SauceLabs URL
         return String.format("https://%s:%s@ondemand.%s.saucelabs.com:443/wd/hub",
                 sauceUsername, sauceAccessKey, sauceDataCenter);
+    }
+
+    /**
+     * Check if running in pipeline mode (using hub URL).
+     */
+    public boolean isPipelineMode() {
+        return useHub && hubUrl != null && !hubUrl.isEmpty();
     }
 }
