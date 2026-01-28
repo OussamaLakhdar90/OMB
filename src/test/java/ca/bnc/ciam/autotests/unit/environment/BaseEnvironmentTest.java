@@ -299,4 +299,136 @@ public class BaseEnvironmentTest {
         boolean result = BaseEnvironment.isRunningInPipeline();
         assertThat(result).isIn(true, false);
     }
+
+    // ===========================================
+    // Hub Configuration System Properties Tests
+    // ===========================================
+
+    @Test
+    public void testHubUseProperty_CanBeSetAndRead() {
+        String propName = "bnc.test.hub.use";
+        String originalValue = System.getProperty(propName);
+        try {
+            System.setProperty(propName, "true");
+            assertThat(System.getProperty(propName)).isEqualTo("true");
+
+            System.setProperty(propName, "false");
+            assertThat(System.getProperty(propName)).isEqualTo("false");
+        } finally {
+            if (originalValue != null) {
+                System.setProperty(propName, originalValue);
+            } else {
+                System.clearProperty(propName);
+            }
+        }
+    }
+
+    @Test
+    public void testHubUrlProperty_CanBeSetAndRead() {
+        String propName = "bnc.test.hub.url";
+        String originalValue = System.getProperty(propName);
+        try {
+            String testUrl = "https://ondemand.saucelabs.com/wd/hub";
+            System.setProperty(propName, testUrl);
+            assertThat(System.getProperty(propName)).isEqualTo(testUrl);
+        } finally {
+            if (originalValue != null) {
+                System.setProperty(propName, originalValue);
+            } else {
+                System.clearProperty(propName);
+            }
+        }
+    }
+
+    @Test
+    public void testBrowsersConfigProperty_CanBeSetAndRead() {
+        String propName = "bnc.web.browsers.config";
+        String originalValue = System.getProperty(propName);
+        try {
+            String testPath = "configuration/config_chrome_win10.json";
+            System.setProperty(propName, testPath);
+            assertThat(System.getProperty(propName)).isEqualTo(testPath);
+        } finally {
+            if (originalValue != null) {
+                System.setProperty(propName, originalValue);
+            } else {
+                System.clearProperty(propName);
+            }
+        }
+    }
+
+    @Test
+    public void testTunnelIdentifierProperty_CanBeSetAndRead() {
+        String propName = "bnc.test.hub.tunnelIdentifier";
+        String originalValue = System.getProperty(propName);
+        try {
+            String testTunnel = "SauceConnect";
+            System.setProperty(propName, testTunnel);
+            assertThat(System.getProperty(propName)).isEqualTo(testTunnel);
+        } finally {
+            if (originalValue != null) {
+                System.setProperty(propName, originalValue);
+            } else {
+                System.clearProperty(propName);
+            }
+        }
+    }
+
+    @Test
+    public void testParentTunnelProperty_CanBeSetAndRead() {
+        String propName = "bnc.test.hub.parentTunnel";
+        String originalValue = System.getProperty(propName);
+        try {
+            String testParentTunnel = "TestAdmin";
+            System.setProperty(propName, testParentTunnel);
+            assertThat(System.getProperty(propName)).isEqualTo(testParentTunnel);
+        } finally {
+            if (originalValue != null) {
+                System.setProperty(propName, originalValue);
+            } else {
+                System.clearProperty(propName);
+            }
+        }
+    }
+
+    @Test
+    public void testHubProperties_AreIndependent() {
+        // Clear all hub properties
+        String[] hubProps = {
+            "bnc.test.hub.use",
+            "bnc.test.hub.url",
+            "bnc.web.browsers.config",
+            "bnc.test.hub.tunnelIdentifier",
+            "bnc.test.hub.parentTunnel"
+        };
+
+        // Store original values
+        String[] originals = new String[hubProps.length];
+        for (int i = 0; i < hubProps.length; i++) {
+            originals[i] = System.getProperty(hubProps[i]);
+        }
+
+        try {
+            // Clear all
+            for (String prop : hubProps) {
+                System.clearProperty(prop);
+            }
+
+            // Setting one should not affect others
+            System.setProperty("bnc.test.hub.use", "true");
+            assertThat(System.getProperty("bnc.test.hub.url")).isNull();
+            assertThat(System.getProperty("bnc.web.browsers.config")).isNull();
+            assertThat(System.getProperty("bnc.test.hub.tunnelIdentifier")).isNull();
+            assertThat(System.getProperty("bnc.test.hub.parentTunnel")).isNull();
+        } finally {
+            // Restore original values
+            for (int i = 0; i < hubProps.length; i++) {
+                if (originals[i] != null) {
+                    System.setProperty(hubProps[i], originals[i]);
+                } else {
+                    System.clearProperty(hubProps[i]);
+                }
+            }
+        }
+    }
 }
