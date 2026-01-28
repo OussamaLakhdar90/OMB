@@ -52,6 +52,12 @@ import java.util.List;
  * - bnc.record.mode: true/false - Enable record mode to create baselines
  * - bnc.baselines.root: path - Override baseline location
  * - bnc.visual.ai.enabled: true/false - Enable/disable AI fallback (default: true)
+ * - bnc.web.gui.lang: language code for baselines (e.g., "en", "fr")
+ * - lang: fallback language property
+ *
+ * Baseline structure:
+ * - baselines/{browser}/{language}/{className}/{stepName}_1.png
+ * - Example: baselines/chrome/en/LoginTest/login_page_1.png
  */
 @Slf4j
 public final class VisualCapture {
@@ -61,6 +67,9 @@ public final class VisualCapture {
     private static final String RECORD_MODE_PROPERTY = "bnc.record.mode";
     private static final String BASELINES_ROOT_PROPERTY = "bnc.baselines.root";
     private static final String AI_ENABLED_PROPERTY = "bnc.visual.ai.enabled";
+    private static final String LANGUAGE_PROPERTY = "bnc.web.gui.lang";
+    private static final String LANGUAGE_PROPERTY_FALLBACK = "lang";
+    private static final String DEFAULT_LANGUAGE = "en";
     private static final double DEFAULT_TOLERANCE = 0.01; // 1%
 
     private static final Path PROJECT_ROOT = detectProjectRoot();
@@ -140,13 +149,14 @@ public final class VisualCapture {
         lastDiffBase64.remove();
         lastErrorMessage.remove();
 
-        // Get browser-specific baseline directory
+        // Get browser and language-specific baseline directory
         String browserName = detectBrowserName(driver);
+        String language = getLanguage();
         Path baselineDir = getBaselineDir(browserName, className);
 
         log.info("========================================");
         log.info("Visual Capture: {}/{}", className, stepName);
-        log.info("Browser: {}", browserName);
+        log.info("Browser: {}, Language: {}", browserName, language);
         log.info("Mode: {}", isRecordMode ? "RECORD" : "COMPARE");
         log.info("Baseline directory: {}", baselineDir);
         log.info("========================================");
@@ -352,6 +362,7 @@ public final class VisualCapture {
 
     /**
      * Save diff and actual images for failed comparison.
+     * Files include language in filename for multi-language support.
      */
     private static void saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
                                            String className, String stepName, int index) {
@@ -359,11 +370,14 @@ public final class VisualCapture {
             Path reportDir = getReportVisualDir();
             Files.createDirectories(reportDir);
 
+            String language = getLanguage();
             String suffix = "_" + index;
+            // Include language in filename: ClassName_lang_stepName_1_diff.png
+            String filePrefix = className + "_" + language + "_" + stepName + suffix;
 
             // Save diff
             if (diffImage != null) {
-                Path diffPath = reportDir.resolve(className + "_" + stepName + suffix + "_diff.png");
+                Path diffPath = reportDir.resolve(filePrefix + "_diff.png");
                 ImageIO.write(diffImage, "PNG", diffPath.toFile());
                 log.info("Diff image saved: {}", diffPath);
 
@@ -374,7 +388,7 @@ public final class VisualCapture {
             }
 
             // Save actual
-            Path actualPath = reportDir.resolve(className + "_" + stepName + suffix + "_actual.png");
+            Path actualPath = reportDir.resolve(filePrefix + "_actual.png");
             ImageIO.write(actualImage, "PNG", actualPath.toFile());
             log.info("Actual image saved: {}", actualPath);
 
@@ -402,11 +416,30 @@ public final class VisualCapture {
     }
 
     /**
-     * Get baseline directory for browser and class.
+     * Get baseline directory for browser, language, and class.
+     * Structure: baselines/{browser}/{language}/{className}
      */
     private static Path getBaselineDir(String browserName, String className) {
         Path baselinesRoot = getBaselinesRoot();
-        return baselinesRoot.resolve(browserName).resolve(className);
+        String language = getLanguage();
+        return baselinesRoot.resolve(browserName).resolve(language).resolve(className);
+    }
+
+    /**
+     * Get the current language for baselines.
+     * Priority: bnc.web.gui.lang > lang > "en" (default)
+     *
+     * @return the language code (e.g., "en", "fr")
+     */
+    public static String getLanguage() {
+        String lang = System.getProperty(LANGUAGE_PROPERTY);
+        if (lang == null || lang.isEmpty()) {
+            lang = System.getProperty(LANGUAGE_PROPERTY_FALLBACK);
+        }
+        if (lang == null || lang.isEmpty()) {
+            lang = DEFAULT_LANGUAGE;
+        }
+        return lang.toLowerCase().trim();
     }
 
     /**
@@ -429,6 +462,15 @@ public final class VisualCapture {
      */
     public static String getLastErrorMessage() {
         return lastErrorMessage.get();
+    }
+
+    /**
+     * Clear the thread-local state (for testing purposes).
+     * This clears lastDiffBase64 and lastErrorMessage.
+     */
+    public static void clearState() {
+        lastDiffBase64.remove();
+        lastErrorMessage.remove();
     }
 
     /**

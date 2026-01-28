@@ -15,20 +15,34 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class VisualCaptureTest {
 
     private String originalRecordMode;
+    private String originalLang;
+    private String originalLangFallback;
 
     @BeforeMethod
     public void setUp() {
-        // Save original value
+        // Save original values
         originalRecordMode = System.getProperty("bnc.record.mode");
+        originalLang = System.getProperty("bnc.web.gui.lang");
+        originalLangFallback = System.getProperty("lang");
     }
 
     @AfterMethod
     public void tearDown() {
-        // Restore original value
+        // Restore original values
         if (originalRecordMode != null) {
             System.setProperty("bnc.record.mode", originalRecordMode);
         } else {
             System.clearProperty("bnc.record.mode");
+        }
+        if (originalLang != null) {
+            System.setProperty("bnc.web.gui.lang", originalLang);
+        } else {
+            System.clearProperty("bnc.web.gui.lang");
+        }
+        if (originalLangFallback != null) {
+            System.setProperty("lang", originalLangFallback);
+        } else {
+            System.clearProperty("lang");
         }
     }
 
@@ -84,6 +98,8 @@ public class VisualCaptureTest {
 
     @Test
     public void testGetLastDiffBase64_WhenNoDiff_ReturnsNull() {
+        // Clear any state from previous tests
+        VisualCapture.clearState();
         // Without running a capture, the last diff should be null
         assertThat(VisualCapture.getLastDiffBase64()).isNull();
     }
@@ -94,6 +110,8 @@ public class VisualCaptureTest {
 
     @Test
     public void testGetLastErrorMessage_WhenNoError_ReturnsNull() {
+        // Clear any state from previous tests
+        VisualCapture.clearState();
         // Without running a capture, the last error should be null
         assertThat(VisualCapture.getLastErrorMessage()).isNull();
     }
@@ -118,5 +136,74 @@ public class VisualCaptureTest {
         // Even in record mode, null driver should return false
         boolean result = VisualCapture.captureStep(null, "TestClass", "testStep");
         assertThat(result).isFalse();
+    }
+
+    // ===========================================
+    // Language Detection Tests
+    // ===========================================
+
+    @Test
+    public void testGetLanguage_WhenBncWebGuiLangSet_ReturnsThatValue() {
+        System.setProperty("bnc.web.gui.lang", "fr");
+        System.clearProperty("lang");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("fr");
+    }
+
+    @Test
+    public void testGetLanguage_WhenBncWebGuiLangSetUpperCase_ReturnsLowerCase() {
+        System.setProperty("bnc.web.gui.lang", "FR");
+        System.clearProperty("lang");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("fr");
+    }
+
+    @Test
+    public void testGetLanguage_WhenOnlyFallbackSet_ReturnsFallback() {
+        System.clearProperty("bnc.web.gui.lang");
+        System.setProperty("lang", "es");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("es");
+    }
+
+    @Test
+    public void testGetLanguage_WhenBothSet_PrefersBncWebGuiLang() {
+        System.setProperty("bnc.web.gui.lang", "fr");
+        System.setProperty("lang", "es");
+
+        // bnc.web.gui.lang takes priority over lang
+        assertThat(VisualCapture.getLanguage()).isEqualTo("fr");
+    }
+
+    @Test
+    public void testGetLanguage_WhenNeitherSet_ReturnsDefaultEn() {
+        System.clearProperty("bnc.web.gui.lang");
+        System.clearProperty("lang");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("en");
+    }
+
+    @Test
+    public void testGetLanguage_WhenBncWebGuiLangEmpty_UsesFallback() {
+        System.setProperty("bnc.web.gui.lang", "");
+        System.setProperty("lang", "de");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("de");
+    }
+
+    @Test
+    public void testGetLanguage_WhenBothEmpty_ReturnsDefault() {
+        System.setProperty("bnc.web.gui.lang", "");
+        System.setProperty("lang", "");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("en");
+    }
+
+    @Test
+    public void testGetLanguage_TrimsWhitespace() {
+        System.setProperty("bnc.web.gui.lang", "  fr  ");
+        System.clearProperty("lang");
+
+        assertThat(VisualCapture.getLanguage()).isEqualTo("fr");
     }
 }

@@ -445,6 +445,11 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
      * - lang -> bnc.web.gui.lang
      * - record -> bnc.record.mode
      * - cap -> browser capabilities (as JSON string)
+     * - bnc.test.hub.use -> Enable SauceLabs mode
+     * - bnc.test.hub.url -> SauceLabs hub URL
+     * - bnc.web.browsers.config -> Browser config file path (overrides local browser)
+     * - bnc.test.hub.tunnelIdentifier -> Tunnel identifier
+     * - bnc.test.hub.parentTunnel -> Parent tunnel owner
      */
     private static String readPathToDataFromConfig() {
         try {
@@ -463,7 +468,7 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
                 log.info("Set system property web.url = {}", webUrl);
             }
 
-            // Set browser
+            // Set browser (may be overridden by bnc.web.browsers.config when hub mode is enabled)
             String browser = (String) configData.get("browser");
             if (browser != null && System.getProperty("browser") == null) {
                 System.setProperty("browser", browser);
@@ -501,10 +506,50 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
                 log.info("Set system property headless = {}", headlessValue);
             }
 
+            // ==================== Hub/SauceLabs Configuration ====================
+            // Property names match system property names exactly
+
+            // bnc.test.hub.use - Enable SauceLabs mode
+            setSystemPropertyFromConfig(configData, "bnc.test.hub.use");
+
+            // bnc.test.hub.url - SauceLabs hub URL
+            setSystemPropertyFromConfig(configData, "bnc.test.hub.url");
+
+            // bnc.web.browsers.config - Browser config file (overrides local browser setting when hub mode enabled)
+            setSystemPropertyFromConfig(configData, "bnc.web.browsers.config");
+
+            // bnc.test.hub.tunnelIdentifier - Tunnel identifier
+            setSystemPropertyFromConfig(configData, "bnc.test.hub.tunnelIdentifier");
+
+            // bnc.test.hub.parentTunnel - Parent tunnel owner
+            setSystemPropertyFromConfig(configData, "bnc.test.hub.parentTunnel");
+
+            // Log hub mode summary
+            if ("true".equalsIgnoreCase(String.valueOf(configData.get("bnc.test.hub.use")))) {
+                log.info("Hub mode enabled from debug_config.json - will use SauceLabs");
+                String browserConfig = (String) configData.get("bnc.web.browsers.config");
+                if (browserConfig != null && !browserConfig.isEmpty()) {
+                    log.info("Browser configuration will be loaded from: {}", browserConfig);
+                }
+            }
+
             return (String) configData.get("data");
         } catch (IOException e) {
             log.error("Error reading the configuration file at {}: {}", CONFIG_FILE_PATH, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Set a system property from config data if present and not already set.
+     * Uses the same key name for both config and system property.
+     */
+    private static void setSystemPropertyFromConfig(Map<String, Object> configData, String propertyName) {
+        Object value = configData.get(propertyName);
+        if (value != null && System.getProperty(propertyName) == null) {
+            String stringValue = String.valueOf(value);
+            System.setProperty(propertyName, stringValue);
+            log.info("Set system property {} = {}", propertyName, stringValue);
         }
     }
 

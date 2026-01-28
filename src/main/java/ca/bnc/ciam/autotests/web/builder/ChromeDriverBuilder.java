@@ -27,10 +27,13 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
     public WebDriver build(WebConfig config) {
         ChromeOptions options = createOptions(config);
 
-        if (config.getExecutionMode() == ExecutionMode.LOCAL) {
-            return buildLocal(options, config);
-        } else {
+        // Check if hub mode is enabled via system property (local SauceLabs execution)
+        boolean hubModeEnabled = "true".equalsIgnoreCase(System.getProperty("bnc.test.hub.use"));
+
+        if (hubModeEnabled || config.getExecutionMode() == ExecutionMode.SAUCELABS) {
             return buildRemote(options, config);
+        } else {
+            return buildLocal(options, config);
         }
     }
 
@@ -61,6 +64,11 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
         baseArgs.add("--disable-gpu");
         baseArgs.add("--disable-extensions");
         baseArgs.add("--disable-infobars");
+        // Disable password manager popup completely (Chrome 120+)
+        baseArgs.add("--disable-save-password-bubble");
+        baseArgs.add("--disable-features=PasswordManager,PasswordLeakDetection,PasswordSaving,PasswordGeneration");
+        // Use guest mode for clean session without password prompts
+        baseArgs.add("--guest");
 
         // Add base args
         for (String arg : baseArgs) {
@@ -102,21 +110,25 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
             options.addArguments("--auto-open-devtools-for-tabs");
         }
 
-        // Preferences - merge from BrowserConfig and defaults
+        // Preferences - base prefs always included, then merge from config
         Map<String, Object> prefs = new HashMap<>();
-        prefs.put("profile.default_content_setting_values.notifications", 2);
 
-        // Add prefs from BrowserConfig (from JSON file)
+        // Base prefs (always included for stability)
+        prefs.put("profile.default_content_setting_values.notifications", 2);
+        // Password manager prefs (always disabled for automation)
+        prefs.put("credentials_enable_service", false);
+        prefs.put("credentials_enable_autosign_in", false);
+        prefs.put("profile.password_manager_enabled", false);
+        prefs.put("profile.password_manager_leak_detection", false);
+        prefs.put("password_manager.enabled", false);
+        // Autofill prefs (always disabled for automation)
+        prefs.put("autofill.profile_enabled", false);
+        prefs.put("autofill.credit_card_enabled", false);
+
+        // Add/override prefs from BrowserConfig (from JSON file)
         if (browserConfig.hasChromePrefs()) {
             prefs.putAll(browserConfig.getChromePrefs());
             log.debug("Added Chrome prefs from config: {}", browserConfig.getChromePrefs().keySet());
-        } else {
-            // Fallback default prefs
-            prefs.put("credentials_enable_service", false);
-            prefs.put("profile.password_manager_enabled", false);
-            prefs.put("profile.password_manager_leak_detection", false);
-            prefs.put("autofill.profile_enabled", false);
-            prefs.put("autofill.credit_card_enabled", false);
         }
         options.setExperimentalOption("prefs", prefs);
 
@@ -129,20 +141,34 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
 
     /**
      * Load browser configuration based on execution mode.
+     * When hub mode is enabled (bnc.test.hub.use=true) and browser config is specified,
+     * the browser config file overrides local settings.
      */
     private BrowserConfig loadBrowserConfig(WebConfig config) {
         BrowserConfigLoader loader = BrowserConfigLoader.getInstance();
 
-        if (config.getExecutionMode() == ExecutionMode.LOCAL) {
+        // Check if hub mode is enabled via system property
+        boolean hubModeEnabled = "true".equalsIgnoreCase(System.getProperty("bnc.test.hub.use"));
+
+        // Get browser config path from WebConfig or system property
+        String configPath = config.getBrowserConfigPath();
+        if (configPath == null || configPath.isEmpty()) {
+            configPath = System.getProperty("bnc.web.browsers.config");
+        }
+
+        // If hub mode is enabled and browser config is specified, load from config file
+        // This allows local execution to use SauceLabs with a specific browser config
+        if (hubModeEnabled && configPath != null && !configPath.isEmpty()) {
+            log.info("Hub mode enabled - loading browser config from: {}", configPath);
+            return loader.loadPipelineConfig(configPath);
+        }
+
+        // Standard logic based on execution mode
+        if (config.getExecutionMode() == ExecutionMode.LOCAL && !hubModeEnabled) {
             // Local mode - load from debug_config.json
             return loader.loadLocalConfig();
         } else {
             // Pipeline/SauceLabs mode - load from bnc.web.browsers.config
-            String configPath = config.getBrowserConfigPath();
-            if (configPath == null || configPath.isEmpty()) {
-                // Try system property
-                configPath = System.getProperty("bnc.web.browsers.config");
-            }
             if (configPath != null && !configPath.isEmpty()) {
                 return loader.loadPipelineConfig(configPath);
             }
@@ -202,19 +228,29 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
             sauceOptions.put("build", config.getBuildName());
         }
 
-        // Tunnel configuration from WebConfig (context.json)
-        if (config.getTunnelName() != null && !config.getTunnelName().isEmpty()) {
-            sauceOptions.put("tunnelIdentifier", config.getTunnelName());
-            log.info("Using tunnel: {}", config.getTunnelName());
-        } else if (browserConfig.getTunnelIdentifier() != null) {
-            sauceOptions.put("tunnelIdentifier", browserConfig.getTunnelIdentifier());
+        // Tunnel configuration - priority: system property > WebConfig > BrowserConfig
+        String tunnelIdentifier = System.getProperty("bnc.test.hub.tunnelIdentifier");
+        if (tunnelIdentifier == null || tunnelIdentifier.isEmpty()) {
+            tunnelIdentifier = config.getTunnelName();
+        }
+        if (tunnelIdentifier == null || tunnelIdentifier.isEmpty()) {
+            tunnelIdentifier = browserConfig.getTunnelIdentifier();
+        }
+        if (tunnelIdentifier != null && !tunnelIdentifier.isEmpty()) {
+            sauceOptions.put("tunnelIdentifier", tunnelIdentifier);
+            log.info("Using tunnel: {}", tunnelIdentifier);
         }
 
-        if (config.getTunnelOwner() != null && !config.getTunnelOwner().isEmpty()) {
-            sauceOptions.put("parentTunnel", config.getTunnelOwner());
-            log.info("Using parent tunnel: {}", config.getTunnelOwner());
-        } else if (browserConfig.getParentTunnel() != null) {
-            sauceOptions.put("parentTunnel", browserConfig.getParentTunnel());
+        String parentTunnel = System.getProperty("bnc.test.hub.parentTunnel");
+        if (parentTunnel == null || parentTunnel.isEmpty()) {
+            parentTunnel = config.getTunnelOwner();
+        }
+        if (parentTunnel == null || parentTunnel.isEmpty()) {
+            parentTunnel = browserConfig.getParentTunnel();
+        }
+        if (parentTunnel != null && !parentTunnel.isEmpty()) {
+            sauceOptions.put("parentTunnel", parentTunnel);
+            log.info("Using parent tunnel: {}", parentTunnel);
         }
 
         // Other sauce options with fallbacks
@@ -238,8 +274,11 @@ public class ChromeDriverBuilder implements IWebDriverBuilder {
         options.setCapability("browserVersion", browserVersion);
         options.setCapability("sauce:options", sauceOptions);
 
-        // Determine hub URL
-        String hubUrl = config.getSauceLabsUrl();
+        // Determine hub URL - priority: system property > WebConfig
+        String hubUrl = System.getProperty("bnc.test.hub.url");
+        if (hubUrl == null || hubUrl.isEmpty()) {
+            hubUrl = config.getSauceLabsUrl();
+        }
         log.info("Connecting to remote hub: {}", maskCredentials(hubUrl));
         log.info("Platform: {}, Browser version: {}", platformName, browserVersion);
 

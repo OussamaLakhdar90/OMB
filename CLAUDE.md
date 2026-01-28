@@ -250,6 +250,51 @@ For local development, Chrome options can be configured in `src/test/resources/d
 | `ignore_certificate_errors` | `--ignore-certificate-errors` |
 | `disable_password_manager` | Chrome prefs: `credentials_enable_service=false` |
 
+### Local SauceLabs Execution (debug_config.json)
+
+To run tests on SauceLabs from your local machine, add hub configuration to `debug_config.json`.
+Property names match system property names exactly:
+
+```json
+{
+  "data": "./data/staging-ta/data-manager.json",
+  "web_url": "https://app.example.com",
+  "browser": "chrome",
+  "lang": "en",
+  "bnc.test.hub.use": true,
+  "bnc.test.hub.url": "https://ondemand.saucelabs.com/wd/hub",
+  "bnc.web.browsers.config": "configuration/config_chrome_win10.json",
+  "bnc.test.hub.tunnelIdentifier": "SauceConnect",
+  "bnc.test.hub.parentTunnel": "TestAdmin"
+}
+```
+
+**Hub Properties:**
+| Property | Description |
+|----------|-------------|
+| `bnc.test.hub.use` | Enable SauceLabs mode (true/false) |
+| `bnc.test.hub.url` | SauceLabs hub URL |
+| `bnc.web.browsers.config` | Path to browser config file (overrides local `browser` setting) |
+| `bnc.test.hub.tunnelIdentifier` | Tunnel identifier for SauceLabs |
+| `bnc.test.hub.parentTunnel` | Parent tunnel owner for shared tunnels |
+
+**How it works:**
+1. When `bnc.test.hub.use=true`, the framework switches to SauceLabs execution
+2. If `bnc.web.browsers.config` is set, browser configuration is loaded from that file
+3. The browser config file overrides the local `browser` setting (e.g., you can have `browser=chrome` locally but run IE via SauceLabs config)
+4. Tunnel settings are applied to `sauce:options` for the remote connection
+
+**Example - Running IE on SauceLabs while local browser is Chrome:**
+```json
+{
+  "browser": "chrome",
+  "bnc.test.hub.use": true,
+  "bnc.test.hub.url": "https://ondemand.saucelabs.com/wd/hub",
+  "bnc.web.browsers.config": "configuration/config_ie_win10.json"
+}
+```
+The `config_ie_win10.json` defines IE browser settings, which override the local `browser=chrome`.
+
 ### BrowserConfigLoader
 
 The `BrowserConfigLoader` class handles loading browser configuration from JSON files:
@@ -332,29 +377,45 @@ assertThat(passed).as("Visual validation failed").isTrue();
 | >20% | PIXEL_FAIL | Clear mismatch, no AI needed |
 
 **File locations:**
-- Baselines: `src/test/resources/baselines/{browser}/{ClassName}/{stepName}_1.png`
+- Baselines: `src/test/resources/baselines/{browser}/{language}/{ClassName}/{stepName}_1.png`
 - Multiple viewports: `{stepName}_1.png`, `{stepName}_2.png`, etc.
-- Diff images: `target/metrics/visual/{ClassName}_{stepName}_1_diff.png`
+- Diff images: `target/metrics/visual/{ClassName}_{language}_{stepName}_1_diff.png`
 
-**Baseline Structure:**
+**Baseline Structure (with language support):**
 ```
 src/test/resources/baselines/
 ├── chrome/
-│   └── LoginTest/
-│       ├── login_page_1.png    # First viewport
-│       └── login_page_2.png    # Second viewport (if page has scroll)
+│   ├── en/
+│   │   └── LoginTest/
+│   │       ├── login_page_1.png    # English, first viewport
+│   │       └── login_page_2.png    # English, second viewport
+│   └── fr/
+│       └── LoginTest/
+│           └── login_page_1.png    # French version
 ├── firefox/
-│   └── LoginTest/
-│       └── login_page_1.png
+│   ├── en/
+│   │   └── LoginTest/
+│   │       └── login_page_1.png
+│   └── fr/
+│       └── LoginTest/
+│           └── login_page_1.png
 └── edge/
-    └── LoginTest/
-        └── login_page_1.png
+    └── en/
+        └── LoginTest/
+            └── login_page_1.png
 ```
 
 **Configuration:**
 - `bnc.record.mode` - Enable record mode (true/false)
 - `bnc.baselines.root` - Override baseline directory location
 - `bnc.visual.ai.enabled` - Enable/disable AI fallback (default: true)
+- `bnc.web.gui.lang` - Language for baselines (e.g., "en", "fr") - from context.json
+- `lang` - Fallback language property - from debug_config.json
+
+**Language Resolution Priority:**
+1. `bnc.web.gui.lang` system property (pipeline/context.json)
+2. `lang` system property (local/debug_config.json)
+3. Default: "en"
 
 **Usage in debug_config.json:**
 ```json
