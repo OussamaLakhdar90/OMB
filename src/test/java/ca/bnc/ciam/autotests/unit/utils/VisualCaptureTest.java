@@ -206,4 +206,116 @@ public class VisualCaptureTest {
 
         assertThat(VisualCapture.getLanguage()).isEqualTo("fr");
     }
+
+    // ===========================================
+    // CaptureStepIgnoring Tests (WebElement ignore support)
+    // ===========================================
+
+    @Test
+    public void testCaptureStepIgnoring_WithNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Should handle null driver gracefully and return false
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", new org.openqa.selenium.WebElement[0]);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStepIgnoring_WithNullDriverAndNullElements_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Null driver with null elements should return false
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", (org.openqa.selenium.WebElement[]) null);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStepIgnoring_WithToleranceAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Should handle null driver gracefully with tolerance parameter
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", 0.05, new org.openqa.selenium.WebElement[0]);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStepIgnoring_RecordModeWithNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "true");
+
+        // Even in record mode, null driver should return false
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", new org.openqa.selenium.WebElement[0]);
+        assertThat(result).isFalse();
+    }
+
+    // ===========================================
+    // CaptureStep with Ignore Regions (coordinates) Tests
+    // ===========================================
+
+    @Test
+    public void testCaptureStep_WithIgnoreRegionsAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        java.util.List<int[]> ignoreRegions = java.util.Arrays.asList(
+                new int[]{100, 50, 200, 30},
+                new int[]{0, 0, 150, 100}
+        );
+
+        // Should handle null driver gracefully with ignore regions
+        boolean result = VisualCapture.captureStep(null, "TestClass", "testStep", 0.01, ignoreRegions);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStep_WithNullIgnoreRegionsAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Null ignore regions should work (no regions to ignore)
+        boolean result = VisualCapture.captureStep(null, "TestClass", "testStep", 0.01, null);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStep_WithEmptyIgnoreRegionsAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        java.util.List<int[]> emptyRegions = new java.util.ArrayList<>();
+
+        // Empty ignore regions should work
+        boolean result = VisualCapture.captureStep(null, "TestClass", "testStep", 0.01, emptyRegions);
+        assertThat(result).isFalse();
+    }
+
+    // ===========================================
+    // CaptureStepIgnoring Tests (IElement support)
+    // ===========================================
+
+    @Test
+    public void testCaptureStepIgnoring_WithEmptyIElementArrayAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Should handle null driver gracefully with empty IElement array
+        ca.bnc.ciam.autotests.web.elements.IElement[] emptyElements = new ca.bnc.ciam.autotests.web.elements.IElement[0];
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", emptyElements);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStepIgnoring_WithIElementToleranceAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "false");
+
+        // Should handle null driver with tolerance and empty IElement array
+        ca.bnc.ciam.autotests.web.elements.IElement[] emptyElements = new ca.bnc.ciam.autotests.web.elements.IElement[0];
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", 0.05, emptyElements);
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    public void testCaptureStepIgnoring_RecordModeWithIElementAndNullDriver_ReturnsFalse() {
+        System.setProperty("bnc.record.mode", "true");
+
+        // Even in record mode, null driver should return false
+        ca.bnc.ciam.autotests.web.elements.IElement[] emptyElements = new ca.bnc.ciam.autotests.web.elements.IElement[0];
+        boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", emptyElements);
+        assertThat(result).isFalse();
+    }
 }

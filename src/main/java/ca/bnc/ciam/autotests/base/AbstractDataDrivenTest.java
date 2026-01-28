@@ -44,6 +44,13 @@ public abstract class AbstractDataDrivenTest {
     private static final ThreadLocal<Map<String, String>> testDataLocal = ThreadLocal.withInitial(HashMap::new);
 
     /**
+     * Instance-level storage for test data (survives thread migration in @Factory pattern).
+     * When using @Factory with parallel="classes", the constructor runs on a different thread
+     * than the test methods. This instance field preserves the data across threads.
+     */
+    private Map<String, String> instanceTestData;
+
+    /**
      * Shared context across all threads (for cross-test data sharing).
      */
     private static final Map<String, Object> sharedContext = new ConcurrentHashMap<>();
@@ -112,29 +119,45 @@ public abstract class AbstractDataDrivenTest {
 
     /**
      * Set the test data map for the current test.
+     * Stores data both in ThreadLocal (for current thread access) and
+     * instance field (for thread migration support in @Factory pattern).
      *
      * @param data The test data map
      */
-    protected static void setTestData(Map<String, String> data) {
+    protected void setTestData(Map<String, String> data) {
+        this.instanceTestData = data;
         testDataLocal.set(data);
+        log.debug("Test data set: {} entries", data != null ? data.size() : 0);
     }
 
     /**
      * Get the test data map for the current test.
+     * If ThreadLocal is empty but instance field has data (thread migration scenario),
+     * automatically syncs the instance data to the current thread's ThreadLocal.
      *
      * @return The test data map
      */
-    protected static Map<String, String> getTestData() {
-        return testDataLocal.get();
+    protected Map<String, String> getTestData() {
+        Map<String, String> threadData = testDataLocal.get();
+
+        // Handle thread migration: if ThreadLocal is empty but instance has data, sync it
+        if ((threadData == null || threadData.isEmpty()) && instanceTestData != null && !instanceTestData.isEmpty()) {
+            log.debug("Thread migration detected - syncing instance data to ThreadLocal ({} entries)", instanceTestData.size());
+            testDataLocal.set(instanceTestData);
+            return instanceTestData;
+        }
+
+        return threadData;
     }
 
     /**
      * Create a TestData instance with the current test data.
+     * Uses getTestData() to ensure thread migration is handled properly.
      *
      * @return A new TestData instance
      */
     protected TestData testData() {
-        return new TestData(testDataLocal.get());
+        return new TestData(getTestData());
     }
 
     /**

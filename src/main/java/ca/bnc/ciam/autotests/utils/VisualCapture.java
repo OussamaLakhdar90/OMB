@@ -8,6 +8,8 @@ import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import ca.bnc.ciam.autotests.web.elements.IElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.edge.EdgeDriver;
 import org.openqa.selenium.firefox.FirefoxDriver;
@@ -142,6 +144,107 @@ public final class VisualCapture {
      * @return true if passed (or recording), false if mismatch or error
      */
     public static boolean captureStep(WebDriver driver, String className, String stepName, double tolerance) {
+        return captureStep(driver, className, stepName, tolerance, (List<int[]>) null);
+    }
+
+    /**
+     * Capture a visual step with elements to ignore.
+     * Dynamic content (timestamps, counters, etc.) can be excluded from comparison.
+     *
+     * <p>Example usage:
+     * <pre>
+     * WebElement timestamp = driver.findElement(By.id("timestamp"));
+     * WebElement userAvatar = driver.findElement(By.className("avatar"));
+     * boolean passed = VisualCapture.captureStepIgnoring(driver, "LoginTest", "dashboard", timestamp, userAvatar);
+     * </pre>
+     *
+     * @param driver          the WebDriver instance
+     * @param className       the test class name (used for folder)
+     * @param stepName        the step name (used for file prefix)
+     * @param elementsToIgnore elements to exclude from visual comparison (timestamps, dynamic content, etc.)
+     * @return true if passed (or recording), false if mismatch or error
+     */
+    public static boolean captureStepIgnoring(WebDriver driver, String className, String stepName,
+                                               WebElement... elementsToIgnore) {
+        return captureStepIgnoring(driver, className, stepName, DEFAULT_TOLERANCE, elementsToIgnore);
+    }
+
+    /**
+     * Capture a visual step with custom tolerance and elements to ignore.
+     *
+     * @param driver          the WebDriver instance
+     * @param className       the test class name (used for folder)
+     * @param stepName        the step name (used for file prefix)
+     * @param tolerance       the comparison tolerance (0.0 to 1.0)
+     * @param elementsToIgnore elements to exclude from visual comparison
+     * @return true if passed (or recording), false if mismatch or error
+     */
+    public static boolean captureStepIgnoring(WebDriver driver, String className, String stepName,
+                                               double tolerance, WebElement... elementsToIgnore) {
+        List<int[]> ignoreRegions = convertElementsToRegions(elementsToIgnore);
+        return captureStep(driver, className, stepName, tolerance, ignoreRegions);
+    }
+
+    /**
+     * Capture a visual step with IElement wrappers to ignore.
+     * Accepts framework element wrappers (Element, TextField, Button, CheckBox, Image).
+     *
+     * <p>Example usage:
+     * <pre>
+     * IElement timestamp = pageObject.getElement("timestamp");
+     * IElement counter = pageObject.getElement("visitor-counter");
+     * boolean passed = VisualCapture.captureStepIgnoring(driver, "LoginTest", "dashboard", timestamp, counter);
+     * </pre>
+     *
+     * @param driver          the WebDriver instance
+     * @param className       the test class name (used for folder)
+     * @param stepName        the step name (used for file prefix)
+     * @param elementsToIgnore IElement wrappers to exclude from visual comparison
+     * @return true if passed (or recording), false if mismatch or error
+     */
+    public static boolean captureStepIgnoring(WebDriver driver, String className, String stepName,
+                                               IElement... elementsToIgnore) {
+        return captureStepIgnoring(driver, className, stepName, DEFAULT_TOLERANCE, elementsToIgnore);
+    }
+
+    /**
+     * Capture a visual step with custom tolerance and IElement wrappers to ignore.
+     *
+     * @param driver          the WebDriver instance
+     * @param className       the test class name (used for folder)
+     * @param stepName        the step name (used for file prefix)
+     * @param tolerance       the comparison tolerance (0.0 to 1.0)
+     * @param elementsToIgnore IElement wrappers to exclude from visual comparison
+     * @return true if passed (or recording), false if mismatch or error
+     */
+    public static boolean captureStepIgnoring(WebDriver driver, String className, String stepName,
+                                               double tolerance, IElement... elementsToIgnore) {
+        List<int[]> ignoreRegions = convertIElementsToRegions(elementsToIgnore);
+        return captureStep(driver, className, stepName, tolerance, ignoreRegions);
+    }
+
+    /**
+     * Capture a visual step with custom tolerance and ignore regions (coordinates).
+     * Each region is an int array: [x, y, width, height]
+     *
+     * <p>Example usage:
+     * <pre>
+     * List&lt;int[]&gt; ignoreRegions = Arrays.asList(
+     *     new int[]{100, 50, 200, 30},  // Ignore area at (100,50) with size 200x30
+     *     new int[]{0, 0, 150, 100}     // Ignore top-left corner
+     * );
+     * boolean passed = VisualCapture.captureStep(driver, "LoginTest", "dashboard", 0.01, ignoreRegions);
+     * </pre>
+     *
+     * @param driver        the WebDriver instance
+     * @param className     the test class name (used for folder)
+     * @param stepName      the step name (used for file prefix)
+     * @param tolerance     the comparison tolerance (0.0 to 1.0)
+     * @param ignoreRegions list of regions to ignore, each as [x, y, width, height]
+     * @return true if passed (or recording), false if mismatch or error
+     */
+    public static boolean captureStep(WebDriver driver, String className, String stepName,
+                                       double tolerance, List<int[]> ignoreRegions) {
         // Validate driver is not null
         if (driver == null) {
             log.error("Cannot capture visual step: WebDriver is null");
@@ -166,6 +269,13 @@ public final class VisualCapture {
         log.info("Browser: {}, Language: {}", browserName, language);
         log.info("Mode: {}", isRecordMode ? "RECORD" : "COMPARE");
         log.info("Baseline directory: {}", baselineDir);
+        if (ignoreRegions != null && !ignoreRegions.isEmpty()) {
+            log.info("Ignore regions: {} area(s) will be excluded from comparison", ignoreRegions.size());
+            for (int i = 0; i < ignoreRegions.size(); i++) {
+                int[] r = ignoreRegions.get(i);
+                log.info("  Region {}: x={}, y={}, w={}, h={}", i + 1, r[0], r[1], r[2], r[3]);
+            }
+        }
         log.info("========================================");
 
         try {
@@ -177,7 +287,7 @@ public final class VisualCapture {
             if (isRecordMode) {
                 result = recordBaselines(driver, baselineDir, className, stepName, startTime);
             } else {
-                result = compareWithBaselines(driver, baselineDir, className, stepName, tolerance, startTime);
+                result = compareWithBaselines(driver, baselineDir, className, stepName, tolerance, ignoreRegions, startTime);
             }
 
             // Restore original window size
@@ -199,9 +309,16 @@ public final class VisualCapture {
 
     /**
      * Record baselines for the current page.
+     * In record mode, existing baselines are OVERWRITTEN (no comparison is performed).
      */
     private static boolean recordBaselines(WebDriver driver, Path baselineDir, String className,
                                             String stepName, long startTime) throws IOException {
+        // Check if baselines already exist
+        int existingCount = countBaselineFiles(baselineDir, stepName);
+        if (existingCount > 0) {
+            log.info("RECORD MODE: Existing baselines found ({} files) - will be OVERWRITTEN", existingCount);
+        }
+
         // Calculate how many screenshots needed
         int screenshotCount = screenshotManager.calculateScreenshotCount(driver);
         log.info("Page requires {} screenshot(s)", screenshotCount);
@@ -212,16 +329,38 @@ public final class VisualCapture {
         // Create baseline directory
         Files.createDirectories(baselineDir);
 
-        // Save each screenshot
+        // Save each screenshot (overwrites existing files)
+        int newCount = 0;
+        int overwrittenCount = 0;
         for (int i = 0; i < screenshots.size(); i++) {
             Path baselinePath = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
+            boolean existed = Files.exists(baselinePath);
             screenshotManager.saveImage(screenshots.get(i), baselinePath);
-            log.info("RECORDED baseline {}: {}", i + 1, baselinePath);
+
+            if (existed) {
+                log.info("OVERWRITTEN baseline {}: {}", i + 1, baselinePath);
+                overwrittenCount++;
+            } else {
+                log.info("CREATED baseline {}: {}", i + 1, baselinePath);
+                newCount++;
+            }
+        }
+
+        // Clean up old baselines if current page has fewer screenshots
+        int removedCount = 0;
+        if (existingCount > screenshots.size()) {
+            for (int i = screenshots.size(); i < existingCount; i++) {
+                Path oldBaseline = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
+                if (Files.deleteIfExists(oldBaseline)) {
+                    log.info("REMOVED stale baseline: {}", oldBaseline);
+                    removedCount++;
+                }
+            }
         }
 
         log.info("========================================");
         log.info("RECORD COMPLETE: {}/{}", className, stepName);
-        log.info("Screenshots saved: {}", screenshots.size());
+        log.info("New: {}, Overwritten: {}, Removed: {}", newCount, overwrittenCount, removedCount);
         log.info("========================================");
 
         recordMetric(className, stepName, true, 0, 0, "BASELINE_CREATED", null, startTime);
@@ -232,7 +371,8 @@ public final class VisualCapture {
      * Compare current page with baselines.
      */
     private static boolean compareWithBaselines(WebDriver driver, Path baselineDir, String className,
-                                                 String stepName, double tolerance, long startTime) throws IOException {
+                                                 String stepName, double tolerance, List<int[]> ignoreRegions,
+                                                 long startTime) throws IOException {
         // Count existing baseline files
         int baselineCount = countBaselineFiles(baselineDir, stepName);
 
@@ -286,7 +426,7 @@ public final class VisualCapture {
             BufferedImage baseline = ImageIO.read(baselinePath.toFile());
             BufferedImage current = currentScreenshots.get(i);
 
-            ComparisonResult result = compareSingleScreenshot(baseline, current, tolerance, i + 1);
+            ComparisonResult result = compareSingleScreenshot(baseline, current, tolerance, ignoreRegions, i + 1);
             results.add(result);
 
             if (!result.passed) {
@@ -317,10 +457,10 @@ public final class VisualCapture {
      * Compare a single screenshot pair.
      */
     private static ComparisonResult compareSingleScreenshot(BufferedImage baseline, BufferedImage current,
-                                                             double tolerance, int index) {
+                                                             double tolerance, List<int[]> ignoreRegions, int index) {
         try {
             HybridVisualComparator.HybridComparisonResult result =
-                    getHybridComparator().compare(baseline, current, tolerance, null);
+                    getHybridComparator().compare(baseline, current, tolerance, ignoreRegions);
 
             return new ComparisonResult(
                     index,
@@ -618,6 +758,83 @@ public final class VisualCapture {
         } catch (Exception e) {
             log.debug("MetricsCollector not available: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Convert WebElements to ignore regions (bounding boxes).
+     * Each element's location and size are extracted to create a region [x, y, width, height].
+     *
+     * @param elements WebElements to convert (null elements are skipped)
+     * @return List of int arrays representing regions, or null if no valid elements
+     */
+    private static List<int[]> convertElementsToRegions(WebElement... elements) {
+        if (elements == null || elements.length == 0) {
+            return null;
+        }
+
+        List<int[]> regions = new ArrayList<>();
+        for (WebElement element : elements) {
+            if (element == null) {
+                continue;
+            }
+            try {
+                org.openqa.selenium.Point location = element.getLocation();
+                Dimension size = element.getSize();
+
+                int[] region = new int[]{
+                        location.getX(),
+                        location.getY(),
+                        size.getWidth(),
+                        size.getHeight()
+                };
+                regions.add(region);
+                log.debug("Element ignore region: x={}, y={}, w={}, h={}",
+                        region[0], region[1], region[2], region[3]);
+            } catch (Exception e) {
+                log.warn("Could not get bounds for element: {}", e.getMessage());
+            }
+        }
+
+        return regions.isEmpty() ? null : regions;
+    }
+
+    /**
+     * Convert IElement wrappers to ignore regions (bounding boxes).
+     * Extracts the underlying WebElement from each wrapper and gets its bounds.
+     *
+     * @param elements IElement wrappers to convert (null elements or null base elements are skipped)
+     * @return List of int arrays representing regions, or null if no valid elements
+     */
+    private static List<int[]> convertIElementsToRegions(IElement... elements) {
+        if (elements == null || elements.length == 0) {
+            return null;
+        }
+
+        List<int[]> regions = new ArrayList<>();
+        for (IElement element : elements) {
+            if (element == null || element.isNull()) {
+                continue;
+            }
+            try {
+                WebElement baseElement = element.getBaseElement();
+                org.openqa.selenium.Point location = baseElement.getLocation();
+                Dimension size = baseElement.getSize();
+
+                int[] region = new int[]{
+                        location.getX(),
+                        location.getY(),
+                        size.getWidth(),
+                        size.getHeight()
+                };
+                regions.add(region);
+                log.debug("IElement ignore region: x={}, y={}, w={}, h={}",
+                        region[0], region[1], region[2], region[3]);
+            } catch (Exception e) {
+                log.warn("Could not get bounds for IElement: {}", e.getMessage());
+            }
+        }
+
+        return regions.isEmpty() ? null : regions;
     }
 
     /**

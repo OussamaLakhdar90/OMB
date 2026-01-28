@@ -334,6 +334,51 @@ boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "
 assertThat(passed).as("Visual validation failed").isTrue();
 ```
 
+**Ignoring Dynamic Elements:**
+
+For pages with dynamic content (timestamps, counters, live data), you can exclude specific elements from comparison. Both `WebElement` and `IElement` wrappers are supported:
+
+```java
+// Using WebElement directly
+WebElement timestamp = driver.findElement(By.id("timestamp"));
+boolean passed = VisualCapture.captureStepIgnoring(driver, getClass().getSimpleName(), "dashboard", timestamp);
+
+// Using IElement wrappers (Element, TextField, Button, CheckBox, Image)
+IElement clock = pageObject.getElement("clock");
+IElement counter = pageObject.getElement("visitor-counter");
+boolean passed = VisualCapture.captureStepIgnoring(driver, getClass().getSimpleName(), "dashboard", clock, counter);
+
+// Ignore multiple WebElements (varargs)
+WebElement clock = driver.findElement(By.id("clock"));
+WebElement counter = driver.findElement(By.id("visitor-counter"));
+WebElement livePrice = driver.findElement(By.className("live-price"));
+boolean passed = VisualCapture.captureStepIgnoring(driver, getClass().getSimpleName(), "trading_page",
+    clock, counter, livePrice);
+
+// With custom tolerance (5% = 0.05)
+boolean passed = VisualCapture.captureStepIgnoring(driver, getClass().getSimpleName(), "step_name",
+    0.05, timestamp, counter);
+```
+
+**Alternative: Coordinate-based regions:**
+
+If you don't have access to WebElements, you can specify regions as coordinate arrays `[x, y, width, height]`:
+
+```java
+List<int[]> ignoreRegions = Arrays.asList(
+    new int[]{100, 50, 200, 30},   // Region at (100,50) with 200x30 size
+    new int[]{500, 100, 150, 40}   // Another region to ignore
+);
+boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "step_name",
+    0.02, ignoreRegions);
+```
+
+**How ignore regions work:**
+1. Element bounds are extracted using `element.getLocation()` and `element.getSize()`
+2. Regions are painted over with a neutral color in both baseline and actual images
+3. Pixel/AI comparison then runs on the masked images
+4. Null or stale elements are safely skipped with a warning
+
 **Key Features:**
 - **Fixed resolution**: Always uses 1920x1080 for consistency across machines
 - **Dynamic scrolling**: Automatically captures multiple screenshots for long pages
