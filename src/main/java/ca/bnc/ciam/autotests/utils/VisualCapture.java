@@ -279,6 +279,7 @@ public final class VisualCapture {
         // Compare each pair
         List<ComparisonResult> results = new ArrayList<>();
         boolean allPassed = true;
+        String firstDiffImagePath = null;
 
         for (int i = 0; i < baselineCount; i++) {
             Path baselinePath = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
@@ -290,8 +291,11 @@ public final class VisualCapture {
 
             if (!result.passed) {
                 allPassed = false;
-                // Save diff and actual for failed comparison
-                saveDiffAndActual(result.diffImage, current, className, stepName, i + 1);
+                // Save diff and actual for failed comparison, capture path for report
+                String diffPath = saveDiffAndActual(result.diffImage, current, className, stepName, i + 1);
+                if (firstDiffImagePath == null) {
+                    firstDiffImagePath = diffPath;
+                }
             }
 
             log.info("Screenshot {}: {} (diff: {:.4f}%)",
@@ -301,10 +305,10 @@ public final class VisualCapture {
         // Log summary
         logComparisonSummary(className, stepName, results, allPassed);
 
-        // Record metrics
+        // Record metrics with diff image path for report
         double maxDiff = results.stream().mapToDouble(r -> r.diffPercentage).max().orElse(0);
         String status = allPassed ? "SUCCESS" : "VISUAL_MISMATCH";
-        recordMetric(className, stepName, allPassed, maxDiff, tolerance, status, null, startTime);
+        recordMetric(className, stepName, allPassed, maxDiff, tolerance, status, firstDiffImagePath, startTime);
 
         return allPassed;
     }
@@ -370,9 +374,11 @@ public final class VisualCapture {
     /**
      * Save diff and actual images for failed comparison.
      * Files include language in filename for multi-language support.
+     *
+     * @return the relative path to the diff image, or null if saving failed
      */
-    private static void saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
-                                           String className, String stepName, int index) {
+    private static String saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
+                                             String className, String stepName, int index) {
         try {
             Path reportDir = getReportVisualDir();
             Files.createDirectories(reportDir);
@@ -382,11 +388,16 @@ public final class VisualCapture {
             // Include language in filename: ClassName_lang_stepName_1_diff.png
             String filePrefix = className + "_" + language + "_" + stepName + suffix;
 
+            String diffRelativePath = null;
+
             // Save diff
             if (diffImage != null) {
                 Path diffPath = reportDir.resolve(filePrefix + "_diff.png");
                 ImageIO.write(diffImage, "PNG", diffPath.toFile());
                 log.info("Diff image saved: {}", diffPath);
+
+                // Store relative path for report embedding
+                diffRelativePath = REPORT_VISUAL_DIR_NAME + "/" + filePrefix + "_diff.png";
 
                 // Store Base64 for embedding (only first diff)
                 if (index == 1) {
@@ -399,8 +410,11 @@ public final class VisualCapture {
             ImageIO.write(actualImage, "PNG", actualPath.toFile());
             log.info("Actual image saved: {}", actualPath);
 
+            return diffRelativePath;
+
         } catch (IOException e) {
             log.warn("Failed to save diff/actual images: {}", e.getMessage());
+            return null;
         }
     }
 
