@@ -82,24 +82,32 @@ public class HybridVisualComparator implements AutoCloseable {
         this.grayZoneUpper = grayZoneUpper;
         this.aiThreshold = aiThreshold;
 
+        // Initialize AI comparator with graceful fallback
+        AIImageComparator tempComparator = null;
+        boolean tempEnabled = false;
+
         if (enableAI) {
-            AIImageComparator tempAI = new AIImageComparator(aiThreshold);
-            if (tempAI.isAvailable()) {
-                this.aiComparator = tempAI;
-                this.aiEnabled = true;
-                log.info("Hybrid comparator initialized with AI support");
-            } else {
-                log.warn("AI comparator not available: {}. Using pixel-based comparison only.",
-                        tempAI.getInitError());
-                tempAI.close();
-                this.aiComparator = null;
-                this.aiEnabled = false;
+            try {
+                AIImageComparator ai = new AIImageComparator(aiThreshold);
+                if (ai.isAvailable()) {
+                    tempComparator = ai;
+                    tempEnabled = true;
+                    log.info("Hybrid comparator initialized with AI support");
+                } else {
+                    log.warn("AI comparator not available: {}. Using pixel-based comparison only.",
+                            ai.getInitError());
+                    try { ai.close(); } catch (Exception ignored) {}
+                }
+            } catch (Throwable e) {
+                log.warn("AI comparator initialization failed: {}. Using pixel-based comparison only.",
+                        e.getMessage());
             }
         } else {
-            this.aiComparator = null;
-            this.aiEnabled = false;
             log.info("Hybrid comparator initialized without AI (disabled)");
         }
+
+        this.aiComparator = tempComparator;
+        this.aiEnabled = tempEnabled;
     }
 
     /**

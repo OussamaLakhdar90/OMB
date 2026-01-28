@@ -53,15 +53,24 @@ public final class VisualCapture {
 
     private static final Path PROJECT_ROOT = detectProjectRoot();
     private static final ScreenshotManager screenshotManager = new ScreenshotManager();
-    private static final HybridVisualComparator hybridComparator = createHybridComparator();
+
+    // Lazy-loaded comparator to avoid class loading issues when visual testing is not used
+    private static volatile HybridVisualComparator hybridComparator;
 
     /**
-     * Create the hybrid comparator based on configuration.
+     * Get or create the hybrid comparator (lazy initialization).
      */
-    private static HybridVisualComparator createHybridComparator() {
-        boolean aiEnabled = !"false".equalsIgnoreCase(System.getProperty(AI_ENABLED_PROPERTY));
-        log.info("Creating hybrid visual comparator with AI enabled: {}", aiEnabled);
-        return new HybridVisualComparator(DEFAULT_TOLERANCE, 0.05, 0.20, 0.92, aiEnabled);
+    private static HybridVisualComparator getHybridComparator() {
+        if (hybridComparator == null) {
+            synchronized (VisualCapture.class) {
+                if (hybridComparator == null) {
+                    boolean aiEnabled = !"false".equalsIgnoreCase(System.getProperty(AI_ENABLED_PROPERTY));
+                    log.info("Creating hybrid visual comparator with AI enabled: {}", aiEnabled);
+                    hybridComparator = new HybridVisualComparator(DEFAULT_TOLERANCE, 0.05, 0.20, 0.92, aiEnabled);
+                }
+            }
+        }
+        return hybridComparator;
     }
 
     /**
@@ -171,7 +180,7 @@ public final class VisualCapture {
      * Check if AI-based comparison is available.
      */
     public static boolean isAIAvailable() {
-        return hybridComparator.isAIAvailable();
+        return getHybridComparator().isAIAvailable();
     }
 
     /**
@@ -262,7 +271,7 @@ public final class VisualCapture {
 
             // Compare using hybrid strategy (pixel-based + AI fallback)
             HybridVisualComparator.HybridComparisonResult result =
-                    hybridComparator.compare(baselineImage, currentImage, tolerance, null);
+                    getHybridComparator().compare(baselineImage, currentImage, tolerance, null);
 
             String diffImagePath = null;
 
