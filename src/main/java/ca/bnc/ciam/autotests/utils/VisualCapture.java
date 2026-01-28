@@ -142,6 +142,13 @@ public final class VisualCapture {
      * @return true if passed (or recording), false if mismatch or error
      */
     public static boolean captureStep(WebDriver driver, String className, String stepName, double tolerance) {
+        // Validate driver is not null
+        if (driver == null) {
+            log.error("Cannot capture visual step: WebDriver is null");
+            lastErrorMessage.set("WebDriver is null - cannot capture visual step");
+            return false;
+        }
+
         boolean isRecordMode = isRecordMode();
         long startTime = System.currentTimeMillis();
 
