@@ -30,7 +30,6 @@
         <ashot.version>1.5.4</ashot.version>
         <opencv.version>4.9.0-0</opencv.version>
         <commons.io.version>2.15.1</commons.io.version>
-        <commons.lang3.version>3.14.0</commons.lang3.version>
         <json.version>20240303</json.version>
         <mockito.version>5.11.0</mockito.version>
         <jacoco.version>0.8.11</jacoco.version>
@@ -42,13 +41,6 @@
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-java</artifactId>
-            <version>${selenium.version}</version>
-        </dependency>
-
-        <!-- Selenium DevTools (CDP) for Chrome v131 -->
-        <dependency>
-            <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-devtools-v131</artifactId>
             <version>${selenium.version}</version>
         </dependency>
 
@@ -146,18 +138,6 @@
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
             <version>${commons.io.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>${commons.lang3.version}</version>
-        </dependency>
-
-        <!-- Apache HttpClient for Xray/SauceLabs API calls -->
-        <dependency>
-            <groupId>org.apache.httpcomponents.client5</groupId>
-            <artifactId>httpclient5</artifactId>
-            <version>5.3</version>
         </dependency>
 
         <!-- Mockito for unit testing -->

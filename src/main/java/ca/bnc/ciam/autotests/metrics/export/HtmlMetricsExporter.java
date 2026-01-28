@@ -224,6 +224,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                                 <th>Status</th>
                                 <th>Diff %%</th>
                                 <th>Tolerance %%</th>
+                                <th>Actual Image</th>
                                 <th>Diff Image</th>
                             </tr>
                         </thead>
@@ -232,6 +233,22 @@ public class HtmlMetricsExporter implements MetricsExporter {
 
             for (TestMetrics.VisualMetric vm : metrics.getVisualMetrics()) {
                 String statusClass = vm.isMatched() ? "status-passed" : "status-failed";
+
+                // Actual image column
+                String actualImageHtml;
+                if (vm.getActualImagePath() != null && !vm.getActualImagePath().isEmpty()) {
+                    String actualRelPath = vm.getActualImagePath().replace("\\", "/");
+                    if (actualRelPath.startsWith("target/metrics/")) {
+                        actualRelPath = actualRelPath.substring("target/metrics/".length());
+                    }
+                    actualImageHtml = String.format(
+                        "<a href=\"%s\" target=\"_blank\"><img src=\"%s\" style=\"max-width:150px;max-height:100px;border:2px solid #17a2b8;cursor:pointer;\" title=\"Click to view actual screenshot\"/></a>",
+                        actualRelPath, actualRelPath);
+                } else {
+                    actualImageHtml = "<span style=\"color:#999\">N/A</span>";
+                }
+
+                // Diff image column
                 String diffImageHtml;
                 if (vm.getDiffImagePath() != null && !vm.getDiffImagePath().isEmpty()) {
                     // Create relative path from report location
@@ -240,7 +257,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                         relativePath = relativePath.substring("target/metrics/".length());
                     }
                     diffImageHtml = String.format(
-                        "<a href=\"%s\" target=\"_blank\"><img src=\"%s\" style=\"max-width:150px;max-height:100px;border:1px solid #ddd;cursor:pointer;\" title=\"Click to enlarge\"/></a>",
+                        "<a href=\"%s\" target=\"_blank\"><img src=\"%s\" style=\"max-width:150px;max-height:100px;border:2px solid #dc3545;cursor:pointer;\" title=\"Click to view diff - red circle shows differences\"/></a>",
                         relativePath, relativePath);
                 } else if (!vm.isMatched()) {
                     diffImageHtml = "<span style=\"color:#999\">N/A</span>";
@@ -255,6 +272,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                         <td>%.4f%%</td>
                         <td>%.4f%%</td>
                         <td>%s</td>
+                        <td>%s</td>
                     </tr>
                     """.formatted(
                         escapeHtml(vm.getTestName()),
@@ -263,6 +281,7 @@ public class HtmlMetricsExporter implements MetricsExporter {
                         vm.getStatus(),
                         vm.getDiffPercentage() * 100,
                         vm.getTolerance() * 100,
+                        actualImageHtml,
                         diffImageHtml
                 ));
             }

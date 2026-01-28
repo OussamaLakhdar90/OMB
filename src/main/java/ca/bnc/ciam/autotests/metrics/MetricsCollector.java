@@ -174,7 +174,7 @@ public class MetricsCollector {
      */
     public void recordVisualMetric(String testName, String baselineName, boolean matched,
                                     double diffPercentage, double tolerance, String status,
-                                    String diffImagePath, long comparisonTimeMs) {
+                                    String diffImagePath, String actualImagePath, long comparisonTimeMs) {
         if (currentMetrics == null) {
             return;
         }
@@ -187,6 +187,7 @@ public class MetricsCollector {
                 .tolerance(tolerance)
                 .status(status)
                 .diffImagePath(diffImagePath)
+                .actualImagePath(actualImagePath)
                 .comparisonTimeMs(comparisonTimeMs)
                 .build();
 

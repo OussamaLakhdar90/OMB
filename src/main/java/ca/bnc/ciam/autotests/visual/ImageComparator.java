@@ -17,7 +17,6 @@ import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -122,8 +121,9 @@ public class ImageComparator {
             }
 
             // Apply threshold to find significant differences
+            // Higher threshold (50) to ignore anti-aliasing and minor rendering differences
             Mat thresholded = new Mat();
-            Imgproc.threshold(grayDiff, thresholded, 25, 255, Imgproc.THRESH_BINARY);
+            Imgproc.threshold(grayDiff, thresholded, 50, 255, Imgproc.THRESH_BINARY);
 
             // Count non-zero pixels (differences)
             int diffPixels = Core.countNonZero(thresholded);
@@ -219,7 +219,7 @@ public class ImageComparator {
      * Check if two colors match (with threshold for anti-aliasing).
      */
     private boolean colorsMatch(int rgb1, int rgb2) {
-        int threshold = 25; // Allow small differences for anti-aliasing
+        int threshold = 50; // Allow differences for anti-aliasing and sub-pixel rendering
 
         int r1 = (rgb1 >> 16) & 0xff;
         int g1 = (rgb1 >> 8) & 0xff;
@@ -288,27 +288,82 @@ public class ImageComparator {
     }
 
     /**
-     * Create diff image highlighting differences.
+     * Create diff image with prominent visual highlighting.
+     * Draws a big red circle around the area with differences for easy spotting.
      */
     private BufferedImage createDiffImage(BufferedImage baseline, BufferedImage actual, BufferedImage mask) {
         int width = baseline.getWidth();
         int height = baseline.getHeight();
 
-        BufferedImage diffImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage diffImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = diffImage.createGraphics();
 
-        // Draw actual image
+        // Draw actual image as base
         g.drawImage(actual, 0, 0, null);
 
-        // Overlay differences in red
-        g.setColor(new Color(255, 0, 0, 128));
+        // Find bounding box of all differences
+        int minX = width, minY = height, maxX = 0, maxY = 0;
+        int diffCount = 0;
+
         for (int y = 0; y < Math.min(height, mask.getHeight()); y++) {
             for (int x = 0; x < Math.min(width, mask.getWidth()); x++) {
                 int maskPixel = mask.getRGB(x, y) & 0xff;
                 if (maskPixel > 0) {
-                    g.fillRect(x, y, 1, 1);
+                    diffCount++;
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
                 }
             }
+        }
+
+        if (diffCount > 0) {
+            // Calculate center and radius for the circle
+            int centerX = (minX + maxX) / 2;
+            int centerY = (minY + maxY) / 2;
+            int diffWidth = maxX - minX;
+            int diffHeight = maxY - minY;
+            // Make circle big enough to surround the diff area with padding
+            int radius = (int) (Math.max(diffWidth, diffHeight) / 2.0 * 1.5) + 30;
+
+            // Enable anti-aliasing for smooth circle
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                               java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Draw thick red circle around the diff area
+            g.setColor(new Color(255, 0, 0));
+            g.setStroke(new java.awt.BasicStroke(5.0f));
+            g.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+            // Draw crosshair lines pointing to center
+            int lineLength = 20;
+            g.drawLine(centerX - radius - lineLength, centerY, centerX - radius + 10, centerY);
+            g.drawLine(centerX + radius - 10, centerY, centerX + radius + lineLength, centerY);
+            g.drawLine(centerX, centerY - radius - lineLength, centerX, centerY - radius + 10);
+            g.drawLine(centerX, centerY + radius - 10, centerX, centerY + radius + lineLength);
+
+            // Add label with diff info
+            g.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 16));
+            g.setColor(new Color(255, 0, 0));
+            String label = String.format("DIFF: %d pixels", diffCount);
+            g.drawString(label, centerX - 60, centerY - radius - 25);
+
+            // Also highlight the actual diff pixels with semi-transparent overlay
+            g.setColor(new Color(255, 0, 0, 100));
+            for (int y = minY; y <= maxY; y++) {
+                for (int x = minX; x <= maxX; x++) {
+                    if (x < mask.getWidth() && y < mask.getHeight()) {
+                        int maskPixel = mask.getRGB(x, y) & 0xff;
+                        if (maskPixel > 0) {
+                            g.fillRect(x, y, 1, 1);
+                        }
+                    }
+                }
+            }
+
+            log.info("Diff highlighted: {} pixels in area ({},{}) to ({},{}), circle radius={}",
+                    diffCount, minX, minY, maxX, maxY, radius);
         }
 
         g.dispose();

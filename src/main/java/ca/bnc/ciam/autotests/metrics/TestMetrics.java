@@ -206,6 +206,7 @@ public class TestMetrics {
         private double tolerance;
         private String status; // SUCCESS, FAILURE, WARNING, BASELINE_CREATED
         private String diffImagePath;
+        private String actualImagePath;
         private long comparisonTimeMs;
     }
 

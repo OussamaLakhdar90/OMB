@@ -16,9 +16,13 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.safari.SafariDriver;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +30,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Visual capture utility for screenshot recording and comparison.
@@ -302,7 +307,7 @@ public final class VisualCapture {
             log.error("Error: {}", e.getMessage(), e);
             log.error("========================================");
             lastErrorMessage.set(errorMsg);
-            recordMetric(className, stepName, false, 0, tolerance, "ERROR: " + e.getMessage(), null, startTime);
+            recordMetric(className, stepName, false, 0, tolerance, "ERROR: " + e.getMessage(), null, null, startTime);
             return false;
         }
     }
@@ -363,7 +368,7 @@ public final class VisualCapture {
         log.info("New: {}, Overwritten: {}, Removed: {}", newCount, overwrittenCount, removedCount);
         log.info("========================================");
 
-        recordMetric(className, stepName, true, 0, 0, "BASELINE_CREATED", null, startTime);
+        recordMetric(className, stepName, true, 0, 0, "BASELINE_CREATED", null, null, startTime);
         return true;
     }
 
@@ -385,7 +390,7 @@ public final class VisualCapture {
             log.error(errorMsg);
             log.error("========================================");
             lastErrorMessage.set(errorMsg);
-            recordMetric(className, stepName, false, 0, tolerance, "BASELINE_MISSING", null, startTime);
+            recordMetric(className, stepName, false, 0, tolerance, "BASELINE_MISSING", null, null, startTime);
             return false;
         }
 
@@ -409,7 +414,7 @@ public final class VisualCapture {
             log.error("========================================");
             lastErrorMessage.set(errorMsg);
             recordMetric(className, stepName, false, 0, tolerance,
-                    "STRUCTURE_CHANGED: expected=" + baselineCount + ", actual=" + currentCount, null, startTime);
+                    "STRUCTURE_CHANGED: expected=" + baselineCount + ", actual=" + currentCount, null, null, startTime);
             return false;
         }
 
@@ -420,6 +425,7 @@ public final class VisualCapture {
         List<ComparisonResult> results = new ArrayList<>();
         boolean allPassed = true;
         String firstDiffImagePath = null;
+        String firstActualImagePath = null;
 
         for (int i = 0; i < baselineCount; i++) {
             Path baselinePath = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
@@ -431,10 +437,11 @@ public final class VisualCapture {
 
             if (!result.passed) {
                 allPassed = false;
-                // Save diff and actual for failed comparison, capture path for report
-                String diffPath = saveDiffAndActual(result.diffImage, current, className, stepName, i + 1);
-                if (firstDiffImagePath == null) {
-                    firstDiffImagePath = diffPath;
+                // Save diff and actual for failed comparison, capture paths for report
+                String[] paths = saveDiffAndActual(result.diffImage, current, className, stepName, i + 1);
+                if (paths != null && firstDiffImagePath == null) {
+                    firstDiffImagePath = paths[0];
+                    firstActualImagePath = paths[1];
                 }
             }
 
@@ -445,10 +452,10 @@ public final class VisualCapture {
         // Log summary
         logComparisonSummary(className, stepName, results, allPassed);
 
-        // Record metrics with diff image path for report
+        // Record metrics with diff and actual image paths for report
         double maxDiff = results.stream().mapToDouble(r -> r.diffPercentage).max().orElse(0);
         String status = allPassed ? "SUCCESS" : "VISUAL_MISMATCH";
-        recordMetric(className, stepName, allPassed, maxDiff, tolerance, status, firstDiffImagePath, startTime);
+        recordMetric(className, stepName, allPassed, maxDiff, tolerance, status, firstDiffImagePath, firstActualImagePath, startTime);
 
         return allPassed;
     }
@@ -515,10 +522,10 @@ public final class VisualCapture {
      * Save diff and actual images for failed comparison.
      * Files include language in filename for multi-language support.
      *
-     * @return the relative path to the diff image, or null if saving failed
+     * @return String array [diffPath, actualPath] with relative paths, or null if saving failed
      */
-    private static String saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
-                                             String className, String stepName, int index) {
+    private static String[] saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
+                                               String className, String stepName, int index) {
         try {
             Path reportDir = getReportVisualDir();
             Files.createDirectories(reportDir);
@@ -529,6 +536,7 @@ public final class VisualCapture {
             String filePrefix = className + "_" + language + "_" + stepName + suffix;
 
             String diffRelativePath = null;
+            String actualRelativePath = null;
 
             // Save diff
             if (diffImage != null) {
@@ -549,8 +557,9 @@ public final class VisualCapture {
             Path actualPath = reportDir.resolve(filePrefix + "_actual.png");
             ImageIO.write(actualImage, "PNG", actualPath.toFile());
             log.info("Actual image saved: {}", actualPath);
+            actualRelativePath = REPORT_VISUAL_DIR_NAME + "/" + filePrefix + "_actual.png";
 
-            return diffRelativePath;
+            return new String[]{diffRelativePath, actualRelativePath};
 
         } catch (IOException e) {
             log.warn("Failed to save diff/actual images: {}", e.getMessage());
@@ -605,10 +614,50 @@ public final class VisualCapture {
 
     /**
      * Check if record mode is enabled.
+     * Checks system property first, then falls back to debug_config.json.
      */
     public static boolean isRecordMode() {
         String recordMode = System.getProperty(RECORD_MODE_PROPERTY);
+
+        // If system property not set, try to load from debug_config.json
+        if (recordMode == null) {
+            recordMode = loadRecordModeFromConfig();
+            if (recordMode != null) {
+                // Cache the value in system property for subsequent calls
+                System.setProperty(RECORD_MODE_PROPERTY, recordMode);
+                log.info("Loaded record mode from debug_config.json: {}", recordMode);
+            }
+        }
+
         return "true".equalsIgnoreCase(recordMode);
+    }
+
+    /**
+     * Load record mode from debug_config.json file.
+     * @return "true" or "false" string, or null if not found
+     */
+    private static String loadRecordModeFromConfig() {
+        String configPath = "src/test/resources/debug_config.json";
+        File configFile = new File(configPath);
+
+        if (!configFile.exists()) {
+            log.debug("Debug config file not found at: {}", configPath);
+            return null;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> config = mapper.readValue(configFile, new TypeReference<>() {});
+
+            Object recordObj = config.get("record");
+            if (recordObj != null) {
+                return String.valueOf(recordObj);
+            }
+        } catch (IOException e) {
+            log.debug("Could not read debug_config.json: {}", e.getMessage());
+        }
+
+        return null;
     }
 
     /**
@@ -738,7 +787,7 @@ public final class VisualCapture {
      */
     private static void recordMetric(String className, String stepName, boolean matched,
                                       double diffPercentage, double tolerance, String status,
-                                      String diffImagePath, long startTime) {
+                                      String diffImagePath, String actualImagePath, long startTime) {
         try {
             MetricsCollector collector = MetricsCollector.getInstance();
             if (collector != null) {
@@ -752,6 +801,7 @@ public final class VisualCapture {
                         tolerance,
                         status,
                         diffImagePath,
+                        actualImagePath,
                         comparisonTime
                 );
             }

@@ -465,10 +465,22 @@ src/test/resources/baselines/
 **Usage in debug_config.json:**
 ```json
 {
-  "record": true,   // Sets bnc.record.mode system property
+  "record": true,   // Sets bnc.record.mode system property (overrides existing baselines)
   ...
 }
 ```
+
+**Record Mode Behavior:**
+- `record: true` - Creates new baselines or **overwrites** existing ones
+- `record: false` - Compares against existing baselines
+- The setting is loaded directly by `VisualCapture` from `debug_config.json`
+
+**Diff Image Visualization:**
+When visual comparison fails, a diff image is generated with:
+- A **big red circle** around the area with differences
+- Crosshair lines pointing to the center of the diff
+- A label showing the pixel count (e.g., "DIFF: 1234 pixels")
+- Semi-transparent red overlay on the actual different pixels
 
 ### AI Image Comparison (DJL + ResNet18)
 
@@ -509,7 +521,7 @@ Test reports are automatically generated at suite completion in multiple formats
 - Suite summary (passed/failed/skipped counts, success rate)
 - Individual test results with timing
 - Error messages and stack traces for failures
-- Visual comparison metrics (if visual testing used)
+- Visual comparison metrics with **actual image** and **diff image** thumbnails (clickable)
 - API call metrics (if API testing used)
 
 **Configuration:**

@@ -1,5 +1,6 @@
 {
   "testEnvironment": "test",
   "browser": "chrome",
-  "headless": true
+  "headless": true,
+  "record": false
 }
