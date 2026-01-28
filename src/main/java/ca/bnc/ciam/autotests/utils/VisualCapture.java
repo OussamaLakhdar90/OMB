@@ -5,7 +5,14 @@ import ca.bnc.ciam.autotests.visual.HybridVisualComparator;
 import ca.bnc.ciam.autotests.visual.ScreenshotManager;
 import ca.bnc.ciam.autotests.visual.model.ScreenshotType;
 import lombok.extern.slf4j.Slf4j;
+import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.edge.EdgeDriver;
+import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.ie.InternetExplorerDriver;
+import org.openqa.selenium.safari.SafariDriver;
 import ru.yandex.qatools.ashot.Screenshot;
 
 import javax.imageio.ImageIO;
@@ -33,8 +40,11 @@ import java.util.Base64;
  * assertThat(passed).as("Visual check failed").isTrue();
  * </pre>
  *
- * Files are saved under: {projectRoot}/src/test/resources/baselines/{ClassName}/{stepName}.png
+ * Files are saved under: {projectRoot}/src/test/resources/baselines/{browser}/{ClassName}/{stepName}.png
  * Diff images for reports: {projectRoot}/target/metrics/visual/{ClassName}_{stepName}_diff.png
+ *
+ * Browser-specific baselines ensure that Chrome baselines are compared with Chrome screenshots,
+ * Firefox with Firefox, etc. This handles cross-browser rendering differences.
  *
  * System properties:
  * - bnc.record.mode: true/false - Enable record mode to create baselines
@@ -99,7 +109,7 @@ public final class VisualCapture {
      * @return true if passed (or recording), false if mismatch
      */
     public static boolean captureStep(WebDriver driver, String className, String stepName) {
-        return captureStep(driver, className, stepName, ScreenshotType.FULL_PAGE, DEFAULT_TOLERANCE);
+        return captureStep(driver, className, stepName, ScreenshotType.VIEWPORT, DEFAULT_TOLERANCE);
     }
 
     /**
@@ -130,11 +140,12 @@ public final class VisualCapture {
         boolean isRecordMode = isRecordMode();
         long startTime = System.currentTimeMillis();
 
-        // Get baseline path (absolute)
-        Path baselinePath = getBaselinePath(className, stepName);
+        // Get baseline path (browser-specific)
+        String browserName = detectBrowserName(driver);
+        Path baselinePath = getBaselinePath(driver, className, stepName);
 
-        log.info("Visual capture: {}/{} - Mode: {} - Baseline: {}",
-                className, stepName, isRecordMode ? "RECORD" : "COMPARE", baselinePath);
+        log.info("Visual capture: {}/{} - Browser: {} - Mode: {} - Baseline: {}",
+                className, stepName, browserName, isRecordMode ? "RECORD" : "COMPARE", baselinePath);
 
         // Clear previous diff
         lastDiffBase64.remove();
@@ -185,11 +196,57 @@ public final class VisualCapture {
 
     /**
      * Get the baseline path for a class and step.
-     * Uses absolute path based on project root for consistent resolution.
+     * Uses browser-specific paths: baselines/{browser}/{className}/{stepName}.png
      */
-    private static Path getBaselinePath(String className, String stepName) {
+    private static Path getBaselinePath(WebDriver driver, String className, String stepName) {
         Path baselinesRoot = getBaselinesRoot();
-        return baselinesRoot.resolve(className).resolve(stepName + ".png");
+        String browserName = detectBrowserName(driver);
+        return baselinesRoot.resolve(browserName).resolve(className).resolve(stepName + ".png");
+    }
+
+    /**
+     * Detect the browser name from the WebDriver instance.
+     * Returns lowercase browser name: chrome, firefox, edge, safari, ie, unknown
+     */
+    private static String detectBrowserName(WebDriver driver) {
+        if (driver == null) {
+            return "unknown";
+        }
+
+        // Check by driver class type first (most reliable)
+        if (driver instanceof ChromeDriver) {
+            return "chrome";
+        } else if (driver instanceof FirefoxDriver) {
+            return "firefox";
+        } else if (driver instanceof EdgeDriver) {
+            return "edge";
+        } else if (driver instanceof SafariDriver) {
+            return "safari";
+        } else if (driver instanceof InternetExplorerDriver) {
+            return "ie";
+        }
+
+        // Fallback: check capabilities for RemoteWebDriver
+        if (driver instanceof HasCapabilities) {
+            try {
+                Capabilities caps = ((HasCapabilities) driver).getCapabilities();
+                String browserName = caps.getBrowserName();
+                if (browserName != null && !browserName.isEmpty()) {
+                    // Normalize browser name
+                    browserName = browserName.toLowerCase().trim();
+                    if (browserName.contains("chrome")) return "chrome";
+                    if (browserName.contains("firefox")) return "firefox";
+                    if (browserName.contains("edge") || browserName.contains("msedge")) return "edge";
+                    if (browserName.contains("safari")) return "safari";
+                    if (browserName.contains("ie") || browserName.contains("internet explorer")) return "ie";
+                    return browserName.replaceAll("[^a-z0-9]", "_");
+                }
+            } catch (Exception e) {
+                log.debug("Could not get browser capabilities: {}", e.getMessage());
+            }
+        }
+
+        return "unknown";
     }
 
     /**

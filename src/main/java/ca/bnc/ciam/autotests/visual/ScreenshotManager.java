@@ -3,8 +3,17 @@ package ca.bnc.ciam.autotests.visual;
 import ca.bnc.ciam.autotests.visual.model.ScreenshotType;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chromium.ChromiumDriver;
+import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.devtools.HasDevTools;
+import org.openqa.selenium.edge.EdgeDriver;
+import org.openqa.selenium.firefox.HasFullPageScreenshot;
 import ru.yandex.qatools.ashot.AShot;
 import ru.yandex.qatools.ashot.Screenshot;
 import ru.yandex.qatools.ashot.coordinates.WebDriverCoordsProvider;
@@ -13,6 +22,7 @@ import ru.yandex.qatools.ashot.shooting.ShootingStrategies;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -89,18 +99,174 @@ public class ScreenshotManager {
 
     /**
      * Take full page screenshot (scrolling capture).
+     * Uses native methods for each browser:
+     * - Firefox: HasFullPageScreenshot interface
+     * - Chrome/Edge: CDP Page.captureScreenshot with captureBeyondViewport
+     * - Others: AShot with scaling fallback
      */
     public Screenshot takeFullPageScreenshot(WebDriver driver) {
         log.debug("Taking full page screenshot");
-        return fullPageAshot.takeScreenshot(driver);
+
+        // Firefox supports native full page screenshot
+        if (driver instanceof HasFullPageScreenshot) {
+            try {
+                byte[] screenshotBytes = ((HasFullPageScreenshot) driver).getFullPageScreenshotAs(OutputType.BYTES);
+                BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshotBytes));
+                log.debug("Full page screenshot captured using Firefox native ({}x{})",
+                        image.getWidth(), image.getHeight());
+                return new Screenshot(image);
+            } catch (Exception e) {
+                log.warn("Firefox full page screenshot failed, falling back to AShot: {}", e.getMessage());
+            }
+        }
+
+        // Chrome/Edge: Use CDP for full page screenshot
+        if (driver instanceof ChromiumDriver) {
+            try {
+                Screenshot cdpScreenshot = takeCdpFullPageScreenshot((ChromiumDriver) driver);
+                if (cdpScreenshot != null) {
+                    return cdpScreenshot;
+                }
+            } catch (Exception e) {
+                log.warn("CDP full page screenshot failed, falling back to AShot: {}", e.getMessage());
+            }
+        }
+
+        // Fallback: AShot with proper scaling
+        float dpr = getDevicePixelRatio(driver);
+        log.debug("Device pixel ratio: {}", dpr);
+
+        AShot screenshotAshot;
+        if (dpr > 1) {
+            log.debug("Using scaled shooting strategy for DPR: {}", dpr);
+            screenshotAshot = new AShot()
+                    .shootingStrategy(ShootingStrategies.viewportPasting(
+                            ShootingStrategies.scaling(dpr), DEFAULT_SCROLL_TIMEOUT))
+                    .coordsProvider(new WebDriverCoordsProvider());
+        } else {
+            screenshotAshot = fullPageAshot;
+        }
+
+        return screenshotAshot.takeScreenshot(driver);
+    }
+
+    /**
+     * Take full page screenshot using Chrome DevTools Protocol.
+     * Works for Chrome and Edge browsers.
+     */
+    private Screenshot takeCdpFullPageScreenshot(ChromiumDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // Get full page dimensions
+            Map<String, Object> metrics = getPageMetrics(js);
+            long pageWidth = ((Number) metrics.get("width")).longValue();
+            long pageHeight = ((Number) metrics.get("height")).longValue();
+            float dpr = ((Number) metrics.get("devicePixelRatio")).floatValue();
+
+            log.debug("Page dimensions: {}x{}, DPR: {}", pageWidth, pageHeight, dpr);
+
+            // Use CDP to capture full page
+            DevTools devTools = driver.getDevTools();
+            devTools.createSession();
+
+            // Set device metrics to full page size
+            Map<String, Object> deviceMetrics = new java.util.HashMap<>();
+            deviceMetrics.put("width", pageWidth);
+            deviceMetrics.put("height", pageHeight);
+            deviceMetrics.put("deviceScaleFactor", dpr);
+            deviceMetrics.put("mobile", false);
+
+            driver.executeCdpCommand("Emulation.setDeviceMetricsOverride", deviceMetrics);
+
+            // Capture screenshot
+            Map<String, Object> screenshotParams = new java.util.HashMap<>();
+            screenshotParams.put("captureBeyondViewport", true);
+            screenshotParams.put("fromSurface", true);
+
+            Map<String, Object> result = driver.executeCdpCommand("Page.captureScreenshot", screenshotParams);
+            String base64Screenshot = (String) result.get("data");
+
+            // Clear device metrics override
+            driver.executeCdpCommand("Emulation.clearDeviceMetricsOverride", java.util.Collections.emptyMap());
+
+            // Convert to BufferedImage
+            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Screenshot);
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
+
+            log.debug("CDP full page screenshot captured ({}x{})", image.getWidth(), image.getHeight());
+            return new Screenshot(image);
+
+        } catch (Exception e) {
+            log.debug("CDP screenshot failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get page metrics using JavaScript.
+     */
+    private Map<String, Object> getPageMetrics(JavascriptExecutor js) {
+        String script = """
+            return {
+                width: Math.max(
+                    document.body.scrollWidth,
+                    document.documentElement.scrollWidth,
+                    document.body.offsetWidth,
+                    document.documentElement.offsetWidth,
+                    document.body.clientWidth,
+                    document.documentElement.clientWidth
+                ),
+                height: Math.max(
+                    document.body.scrollHeight,
+                    document.documentElement.scrollHeight,
+                    document.body.offsetHeight,
+                    document.documentElement.offsetHeight,
+                    document.body.clientHeight,
+                    document.documentElement.clientHeight
+                ),
+                devicePixelRatio: window.devicePixelRatio || 1
+            };
+            """;
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) js.executeScript(script);
+        return result;
+    }
+
+    /**
+     * Get device pixel ratio from browser.
+     */
+    private float getDevicePixelRatio(WebDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object result = js.executeScript("return window.devicePixelRatio || 1;");
+            if (result instanceof Number) {
+                return ((Number) result).floatValue();
+            }
+        } catch (Exception e) {
+            log.debug("Could not get device pixel ratio: {}", e.getMessage());
+        }
+        return 1.0f;
     }
 
     /**
      * Take viewport screenshot (visible area only).
+     * Uses native Selenium screenshot which captures the full viewport width.
      */
     public Screenshot takeViewportScreenshot(WebDriver driver) {
         log.debug("Taking viewport screenshot");
-        return ashot.takeScreenshot(driver);
+        try {
+            // Use native Selenium screenshot - captures full viewport correctly
+            TakesScreenshot ts = (TakesScreenshot) driver;
+            byte[] screenshotBytes = ts.getScreenshotAs(OutputType.BYTES);
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshotBytes));
+            log.debug("Viewport screenshot captured ({}x{})", image.getWidth(), image.getHeight());
+            return new Screenshot(image);
+        } catch (Exception e) {
+            log.warn("Native viewport screenshot failed, falling back to AShot: {}", e.getMessage());
+            return ashot.takeScreenshot(driver);
+        }
     }
 
     /**
