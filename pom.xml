@@ -34,6 +34,7 @@
         <json.version>20240303</json.version>
         <mockito.version>5.11.0</mockito.version>
         <jacoco.version>0.8.11</jacoco.version>
+        <djl.version>0.27.0</djl.version>
     </properties>
 
     <dependencies>
@@ -41,6 +42,13 @@
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-java</artifactId>
+            <version>${selenium.version}</version>
+        </dependency>
+
+        <!-- Selenium DevTools (CDP) for Chrome v131 -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-devtools-v131</artifactId>
             <version>${selenium.version}</version>
         </dependency>
 
@@ -159,6 +167,24 @@
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- DJL (Deep Java Library) for AI-based image comparison -->
+        <dependency>
+            <groupId>ai.djl</groupId>
+            <artifactId>api</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-engine</artifactId>
+            <version>${djl.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-model-zoo</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -209,7 +235,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
+                    <argLine>@{argLine} -Dfile.encoding=UTF-8 -Dnet.bytebuddy.experimental=true</argLine>
                     <suiteXmlFiles>
                         <suiteXmlFile>${suiteXmlFile}</suiteXmlFile>
                     </suiteXmlFiles>
