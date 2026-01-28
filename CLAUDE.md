@@ -1,0 +1,415 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+BNC CIAM Test Automation Framework - A Java 21 library for API and Web UI testing using TestNG, Selenium WebDriver, and RestAssured.
+
+## Build Commands
+
+```bash
+# Compile the project
+mvn clean compile
+
+# Run unit tests
+mvn test -Dgroups=unit
+
+# Run tests with a specific suite file
+mvn test -DsuiteXmlFile=suites/unit.xml
+
+# Run a single test class
+mvn test -Dtest=ClassName
+
+# Run a single test method
+mvn test -Dtest=ClassName#methodName
+
+# Generate coverage report (after running tests)
+mvn jacoco:report
+# Reports output to target/site/jacoco/
+```
+
+## Architecture
+
+### Class Hierarchy
+
+```
+AbstractDataDrivenTest          # Base: ThreadLocal context management
+    ├── AbstractSeleniumTest    # Web UI: WebDriver lifecycle + testData field
+    │       └── PageObject      # Page Object Model base with element interactions
+    └── (API test classes)      # Extend directly for API testing
+```
+
+### ThreadLocal Context Pattern
+
+The framework uses ThreadLocal storage for safe parallel test execution:
+- `worldLocal` - Per-thread data sharing between test steps (use `WorldKey` enum)
+- `testDataLocal` - Per-thread test data map
+- `sharedContext` - Cross-thread shared state (ConcurrentHashMap)
+
+```java
+// Store/retrieve data between test steps
+pushToTheWorld(WorldKey.AUTH_TOKEN, token);
+String token = pullFromTheWorld(WorldKey.AUTH_TOKEN, String.class);
+```
+
+### Test Method Naming Convention
+
+Methods must be named `t000`, `t001`, `t002`, etc. for lexicographic ordering by `TestngListener`.
+
+### Dependency Annotation
+
+```java
+@DependentStep                      // Skip if ANY previous test in class failed
+@DependentStep("t001_Login")        // Skip if specific method failed
+public void t002_Dashboard() { }
+```
+
+### Test Data Handling
+
+Test data loaded from JSON files. Sensitive values use `$sensitive:` prefix for environment variable substitution:
+
+```json
+{ "password": "$sensitive:DB_PASSWORD" }
+```
+
+Access via fluent API:
+```java
+testData.from("users.json").forIndex(1).getForKey("username");
+testData.getForKey("email");  // Direct access from current data
+```
+
+### URL Resolution Priority (Web Tests)
+
+1. System property `bnc.web.app.url` (pipeline)
+2. Test data `_app_url` field
+3. System property `web.url` or `webUrl` (local config)
+4. `getBaseUrl()` override in subclass
+
+### Key Modules
+
+| Module | Purpose |
+|--------|---------|
+| `api/` | RestClient (fluent builder), ApiResponse wrapper |
+| `web/page/` | PageObject base class, element locators prefer `data-testid` |
+| `web/elements/` | Element wrappers: TextField, Button, CheckBox (null-safe chaining) |
+| `web/builder/` | Browser-specific driver builders (Chrome, Firefox, Edge, Safari, IE) |
+| `visual/` | Screenshot capture (AShot), image comparison (OpenCV), baseline management |
+| `listener/` | TestngListener - ordering, dependency checking, logging |
+| `xray/` | Jira/Xray integration for test reporting |
+| `metrics/` | Test metrics collection and export (HTML, JSON, CSV) |
+
+### Annotations
+
+| Annotation | Purpose |
+|------------|---------|
+| `@DependentStep` | Auto-skip if dependency failed |
+| `@VisualCheckpoint` | Trigger visual validation |
+| `@SkipVisualCheck` | Skip visual tests |
+| `@Xray` | Link test to Jira/Xray ticket |
+
+### Web Test Pattern
+
+```java
+public class LoginTest extends AbstractSeleniumTest {
+
+    @Test
+    public void t000_Start_Application() {
+        runApplication();  // Inits driver, navigates to URL, refreshes testData
+    }
+
+    @Test
+    @DependentStep
+    public void t001_Login() {
+        type("username", testData.getForKey("user"));
+        type("password", testData.getForKey("pass"));
+        click("submit-btn");
+    }
+}
+```
+
+### API Test Pattern
+
+```java
+public class ApiTest extends AbstractDataDrivenTest {
+
+    @Test
+    public void t001_CreateUser() {
+        Response response = RestClient.builder()
+            .baseUri(baseUrl)
+            .header("Authorization", "Bearer " + token)
+            .body(requestBody)
+            .post("/users");
+
+        pushToTheWorld(WorldKey.RAW_RESPONSE, response);
+    }
+}
+```
+
+## Configuration
+
+### Basic Properties
+
+- **Browser**: System property `browser` (CHROME, FIREFOX, EDGE, SAFARI, IE)
+- **Execution mode**: System property `execution.mode` (LOCAL, SAUCELABS)
+- **Headless**: System property `headless` (true/false)
+- **Language**: System property `bnc.web.gui.lang` or testData `_lang` field
+
+### Pipeline Execution (SauceLabs Tunnel)
+
+Pipeline mode is enabled when `bnc.test.hub.use=true`. This connects to SauceLabs via a tunnel.
+
+| Property | Description |
+|----------|-------------|
+| `bnc.test.hub.use` | Enable pipeline mode (true=SauceLabs, false=local agent) |
+| `bnc.test.hub.url` | SauceLabs tunnel URL |
+| `bnc.test.hub.name` | Tunnel name (tunnelIdentifier) |
+| `bnc.test.hub.owner` | Tunnel owner (parentTunnel) for shared tunnels |
+| `bnc.web.browsers.config` | Path to browser config JSON file |
+| `bnc.web.app.url` | Application URL to test |
+| `bnc.execution.environment` | Environment name (staging-ta, prod, etc.) |
+
+**Browser Config File Structure (bnc.web.browsers.config):**
+
+```json
+{
+  "browsers": [{
+    "browserName": "chrome",
+    "platformName": "WIN10",
+    "browserVersion": "latest",
+    "sauce:options": {
+      "extendedDebugging": true,
+      "screenResolution": "1920x1080",
+      "parentTunnel": "TestAdmin",
+      "tunnelIdentifier": "SauceConnect",
+      "idleTimeout": 300
+    },
+    "goog:chromeOptions": {
+      "args": [
+        "--ignore-certificate-errors",
+        "--disable-notifications",
+        "--disable-popup-blocking"
+      ]
+    }
+  }]
+}
+```
+
+**How pipeline mode works:**
+1. Framework checks `bnc.test.hub.use` property
+2. If true, loads browser config from `bnc.web.browsers.config`
+3. Extracts browserName, platformName, sauce:options, and goog:chromeOptions
+4. Creates RemoteWebDriver connecting to `bnc.test.hub.url`
+5. Tunnel configuration (tunnelIdentifier, parentTunnel) passed in sauce:options
+
+**context.json integration:**
+
+Pipeline properties come from context.json via TestNG parameters:
+```json
+{
+  "staging-ta": {
+    "chrome-en": {
+      "bnc.web.app.url": "https://app.example.com",
+      "bnc.test.hub.url": "https://ondemand.saucelabs.com/wd/hub",
+      "bnc.test.hub.use": true,
+      "bnc.web.browsers.config": "configuration/config_chrome_win10.json",
+      "bnc.web.gui.lang": "en"
+    }
+  }
+}
+```
+
+### Local Execution (debug_config.json)
+
+For local development, Chrome options can be configured in `src/test/resources/debug_config.json`:
+
+```json
+{
+  "data": "./data/staging-ta/data-manager.json",
+  "web_url": "https://the-internet.herokuapp.com/login",
+  "browser": "chrome",
+  "lang": "en",
+  "record": false,
+  "cap": {
+    "headless": false,
+    "window_size": "1920x1080",
+    "disable_notifications": true,
+    "disable_popup_blocking": true,
+    "ignore_certificate_errors": true,
+    "disable_password_manager": true
+  }
+}
+```
+
+**Capability mapping:**
+| debug_config.json | Chrome option |
+|-------------------|---------------|
+| `headless` | `--headless=new` |
+| `disable_notifications` | `--disable-notifications` |
+| `disable_popup_blocking` | `--disable-popup-blocking` |
+| `ignore_certificate_errors` | `--ignore-certificate-errors` |
+| `disable_password_manager` | Chrome prefs: `credentials_enable_service=false` |
+
+### BrowserConfigLoader
+
+The `BrowserConfigLoader` class handles loading browser configuration from JSON files:
+
+```java
+// Pipeline mode - loads from bnc.web.browsers.config
+BrowserConfig config = BrowserConfigLoader.getInstance()
+    .loadPipelineConfig("configuration/config_chrome_win10.json");
+
+// Local mode - loads from debug_config.json
+BrowserConfig config = BrowserConfigLoader.getInstance()
+    .loadLocalConfig();
+
+// Access loaded values
+config.getBrowserName();      // "chrome"
+config.getPlatformName();     // "WIN10"
+config.getChromeArgs();       // ["--ignore-certificate-errors", ...]
+config.getSauceOptions();     // {extendedDebugging: true, ...}
+config.getTunnelIdentifier(); // "SauceConnect"
+config.getParentTunnel();     // "TestAdmin"
+```
+
+## Test Suites
+
+Suite files in `suites/` directory:
+- `unit.xml` - Unit tests (parallel=classes, thread-count=4, groups=unit)
+
+## Visual Testing
+
+### VisualCapture Utility
+
+Visual regression testing with dynamic scrolling support and browser-specific baselines:
+
+```java
+// In test method
+boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "step_name");
+assertThat(passed).as("Visual validation failed").isTrue();
+```
+
+**Key Features:**
+- **Fixed resolution**: Always uses 1920x1080 for consistency across machines
+- **Dynamic scrolling**: Automatically captures multiple screenshots for long pages
+- **Browser-specific baselines**: Separate baselines for Chrome, Firefox, Edge, etc.
+- **Clear error messages**: Distinguishes structure changes from visual differences
+- **Native Selenium**: Works on all browsers without CDP/DevTools dependency
+
+**Modes:**
+- **Record mode** (`bnc.record.mode=true`): Saves screenshot(s) as baseline, returns true
+- **Compare mode** (`bnc.record.mode=false`): Compares against baseline using hybrid strategy
+
+**How It Works:**
+
+1. **Recording:**
+   - Sets window to 1920x1080
+   - Calculates how many viewports needed (based on page height)
+   - Saves: `step_1.png`, `step_2.png`, etc.
+
+2. **Comparison:**
+   - Counts existing baseline files
+   - Calculates current page needs
+   - If counts differ → FAIL with "Page structure changed" message
+   - If counts match → Compares each pair using hybrid strategy
+
+**Error Messages:**
+| Situation | Error Message |
+|-----------|---------------|
+| No baselines | "No baselines found. Run with record=true to create baselines." |
+| Structure changed | "PAGE STRUCTURE CHANGED: Baseline has 2 screenshot(s), but current page needs 1" |
+| Visual mismatch | "Visual mismatch on screenshot 2: 5.25% difference" |
+
+**Hybrid Comparison Strategy:**
+1. Fast pixel-based comparison (OpenCV) runs first
+2. If result is in "gray zone" (5-20% pixel diff), AI fallback is used
+3. AI uses DJL + ResNet18 for perceptual similarity (~45MB model, auto-downloaded)
+
+| Diff Range | Strategy | Description |
+|------------|----------|-------------|
+| 0-5% | PIXEL_PASS | Clear match, no AI needed |
+| 5-20% | AI_FALLBACK | Gray zone, AI decides final result |
+| >20% | PIXEL_FAIL | Clear mismatch, no AI needed |
+
+**File locations:**
+- Baselines: `src/test/resources/baselines/{browser}/{ClassName}/{stepName}_1.png`
+- Multiple viewports: `{stepName}_1.png`, `{stepName}_2.png`, etc.
+- Diff images: `target/metrics/visual/{ClassName}_{stepName}_1_diff.png`
+
+**Baseline Structure:**
+```
+src/test/resources/baselines/
+├── chrome/
+│   └── LoginTest/
+│       ├── login_page_1.png    # First viewport
+│       └── login_page_2.png    # Second viewport (if page has scroll)
+├── firefox/
+│   └── LoginTest/
+│       └── login_page_1.png
+└── edge/
+    └── LoginTest/
+        └── login_page_1.png
+```
+
+**Configuration:**
+- `bnc.record.mode` - Enable record mode (true/false)
+- `bnc.baselines.root` - Override baseline directory location
+- `bnc.visual.ai.enabled` - Enable/disable AI fallback (default: true)
+
+**Usage in debug_config.json:**
+```json
+{
+  "record": true,   // Sets bnc.record.mode system property
+  ...
+}
+```
+
+### AI Image Comparison (DJL + ResNet18)
+
+The framework includes AI-based image comparison using Deep Java Library (DJL):
+
+```java
+// Direct usage of AI comparator
+AIImageComparator aiComparator = new AIImageComparator(0.92); // 92% threshold
+AIComparisonResult result = aiComparator.compare(baseline, actual);
+if (result.isMatch()) {
+    // Images are perceptually similar
+}
+```
+
+**How it works:**
+1. ResNet18 pre-trained model extracts 512-dimensional feature vectors
+2. Cosine similarity compares the feature vectors
+3. Threshold determines match/mismatch
+
+**Model details:**
+- Size: ~45MB (auto-downloaded on first use)
+- Training: ImageNet (14 million images)
+- Storage: Cached in `~/.djl.ai/cache/`
+
+## Test Reports
+
+### Automatic Report Generation
+
+Test reports are automatically generated at suite completion in multiple formats:
+
+**Output location:** `target/metrics/`
+- `test-report-latest.html` - Human-readable HTML report
+- `test-report-latest.json` - Machine-readable JSON
+- `test-report-latest.csv` - Spreadsheet-compatible CSV
+- Timestamped versions are also saved (e.g., `test-report_SuiteName_20240115_143022.html`)
+
+**Report contents:**
+- Suite summary (passed/failed/skipped counts, success rate)
+- Individual test results with timing
+- Error messages and stack traces for failures
+- Visual comparison metrics (if visual testing used)
+- API call metrics (if API testing used)
+
+**Configuration:**
+- `bnc.metrics.enabled` - Enable/disable report generation (default: true)
+
+**Disable reports:**
+```bash
+mvn test -Dbnc.metrics.enabled=false
+```

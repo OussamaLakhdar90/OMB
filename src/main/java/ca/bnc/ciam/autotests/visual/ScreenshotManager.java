@@ -3,72 +3,57 @@ package ca.bnc.ciam.autotests.visual;
 import ca.bnc.ciam.autotests.visual.model.ScreenshotType;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chromium.ChromiumDriver;
-import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.edge.EdgeDriver;
-import org.openqa.selenium.firefox.HasFullPageScreenshot;
 import ru.yandex.qatools.ashot.AShot;
 import ru.yandex.qatools.ashot.Screenshot;
 import ru.yandex.qatools.ashot.coordinates.WebDriverCoordsProvider;
-import ru.yandex.qatools.ashot.shooting.ShootingStrategies;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Manages screenshot capture using AShot library.
- * Supports full page, viewport, and element screenshots.
+ * Manages screenshot capture using native Selenium.
+ * Works across ALL browsers without CDP/DevTools dependency.
+ *
+ * Features:
+ * - Fixed resolution: 1920x1080 for consistency
+ * - Dynamic scrolling: captures multiple screenshots if page needs scroll
+ * - Native Selenium: works on Chrome, Firefox, Edge, Safari, IE
+ *
+ * Usage:
+ * <pre>
+ * ScreenshotManager manager = new ScreenshotManager();
+ *
+ * // Single viewport screenshot
+ * Screenshot screenshot = manager.takeViewportScreenshot(driver);
+ *
+ * // All screenshots needed to capture full page
+ * List&lt;BufferedImage&gt; screenshots = manager.captureAllViewports(driver);
+ * </pre>
  */
 @Slf4j
 public class ScreenshotManager {
 
-    private static final int DEFAULT_SCROLL_TIMEOUT = 100;
-    private static final float DEFAULT_DPR = 2.0f; // Default device pixel ratio
+    public static final int DEFAULT_WIDTH = 1920;
+    public static final int DEFAULT_HEIGHT = 1080;
+    private static final int SCROLL_WAIT_MS = 200;
 
-    private final AShot ashot;
-    private final AShot fullPageAshot;
     private final AShot elementAshot;
 
     public ScreenshotManager() {
-        // Standard viewport screenshot
-        this.ashot = new AShot()
-                .coordsProvider(new WebDriverCoordsProvider());
-
-        // Full page screenshot with scrolling
-        this.fullPageAshot = new AShot()
-                .shootingStrategy(ShootingStrategies.viewportPasting(DEFAULT_SCROLL_TIMEOUT))
-                .coordsProvider(new WebDriverCoordsProvider());
-
-        // Element-specific screenshot
-        this.elementAshot = new AShot()
-                .coordsProvider(new WebDriverCoordsProvider());
-    }
-
-    /**
-     * Create manager with custom scroll timeout.
-     */
-    public ScreenshotManager(int scrollTimeout) {
-        this.ashot = new AShot()
-                .coordsProvider(new WebDriverCoordsProvider());
-
-        this.fullPageAshot = new AShot()
-                .shootingStrategy(ShootingStrategies.viewportPasting(scrollTimeout))
-                .coordsProvider(new WebDriverCoordsProvider());
-
         this.elementAshot = new AShot()
                 .coordsProvider(new WebDriverCoordsProvider());
     }
@@ -81,7 +66,7 @@ public class ScreenshotManager {
             case FULL_PAGE -> takeFullPageScreenshot(driver);
             case VIEWPORT -> takeViewportScreenshot(driver);
             case ELEMENT -> throw new IllegalArgumentException("Element type requires element parameter");
-            case BOTH -> takeFullPageScreenshot(driver); // Default to full page
+            case BOTH -> takeFullPageScreenshot(driver);
         };
     }
 
@@ -98,175 +83,236 @@ public class ScreenshotManager {
     }
 
     /**
-     * Take full page screenshot (scrolling capture).
-     * Uses native methods for each browser:
-     * - Firefox: HasFullPageScreenshot interface
-     * - Chrome/Edge: CDP Page.captureScreenshot with captureBeyondViewport
-     * - Others: AShot with scaling fallback
+     * Ensure window is set to standard resolution (1920x1080).
+     * This provides consistency across different machines and browsers.
+     *
+     * @param driver the WebDriver instance
+     * @return the original window size (for restoration if needed)
      */
-    public Screenshot takeFullPageScreenshot(WebDriver driver) {
-        log.debug("Taking full page screenshot");
+    public Dimension ensureStandardResolution(WebDriver driver) {
+        Dimension originalSize = driver.manage().window().getSize();
 
-        // Firefox supports native full page screenshot
-        if (driver instanceof HasFullPageScreenshot) {
+        if (originalSize.getWidth() != DEFAULT_WIDTH || originalSize.getHeight() != DEFAULT_HEIGHT) {
+            log.info("Setting window size to {}x{} (was {}x{})",
+                    DEFAULT_WIDTH, DEFAULT_HEIGHT, originalSize.getWidth(), originalSize.getHeight());
+            driver.manage().window().setSize(new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+
+            // Wait for resize to take effect
             try {
-                byte[] screenshotBytes = ((HasFullPageScreenshot) driver).getFullPageScreenshotAs(OutputType.BYTES);
-                BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshotBytes));
-                log.debug("Full page screenshot captured using Firefox native ({}x{})",
-                        image.getWidth(), image.getHeight());
-                return new Screenshot(image);
-            } catch (Exception e) {
-                log.warn("Firefox full page screenshot failed, falling back to AShot: {}", e.getMessage());
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
 
-        // Chrome/Edge: Use CDP for full page screenshot
-        if (driver instanceof ChromiumDriver) {
-            try {
-                Screenshot cdpScreenshot = takeCdpFullPageScreenshot((ChromiumDriver) driver);
-                if (cdpScreenshot != null) {
-                    return cdpScreenshot;
-                }
-            } catch (Exception e) {
-                log.warn("CDP full page screenshot failed, falling back to AShot: {}", e.getMessage());
-            }
-        }
-
-        // Fallback: AShot with proper scaling
-        float dpr = getDevicePixelRatio(driver);
-        log.debug("Device pixel ratio: {}", dpr);
-
-        AShot screenshotAshot;
-        if (dpr > 1) {
-            log.debug("Using scaled shooting strategy for DPR: {}", dpr);
-            screenshotAshot = new AShot()
-                    .shootingStrategy(ShootingStrategies.viewportPasting(
-                            ShootingStrategies.scaling(dpr), DEFAULT_SCROLL_TIMEOUT))
-                    .coordsProvider(new WebDriverCoordsProvider());
-        } else {
-            screenshotAshot = fullPageAshot;
-        }
-
-        return screenshotAshot.takeScreenshot(driver);
+        return originalSize;
     }
 
     /**
-     * Take full page screenshot using Chrome DevTools Protocol.
-     * Works for Chrome and Edge browsers.
+     * Restore window to a specific size.
+     *
+     * @param driver the WebDriver instance
+     * @param size the size to restore to
      */
-    private Screenshot takeCdpFullPageScreenshot(ChromiumDriver driver) {
+    public void restoreWindowSize(WebDriver driver, Dimension size) {
+        driver.manage().window().setSize(size);
+    }
+
+    /**
+     * Calculate how many viewport screenshots are needed to capture the full page.
+     *
+     * @param driver the WebDriver instance
+     * @return number of screenshots needed (minimum 1)
+     */
+    public int calculateScreenshotCount(WebDriver driver) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        // Get page and viewport dimensions
+        long scrollHeight = ((Number) js.executeScript(
+                "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);")).longValue();
+        long viewportHeight = ((Number) js.executeScript("return window.innerHeight;")).longValue();
+
+        if (viewportHeight <= 0) {
+            log.warn("Invalid viewport height: {}, defaulting to 1 screenshot", viewportHeight);
+            return 1;
+        }
+
+        int count = (int) Math.ceil((double) scrollHeight / viewportHeight);
+
+        log.debug("Page scrollHeight={}, viewportHeight={}, screenshots needed={}",
+                scrollHeight, viewportHeight, count);
+
+        return Math.max(1, count);
+    }
+
+    /**
+     * Check if the page has vertical scroll.
+     *
+     * @param driver the WebDriver instance
+     * @return true if page has scroll, false otherwise
+     */
+    public boolean hasVerticalScroll(WebDriver driver) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        long scrollHeight = ((Number) js.executeScript(
+                "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);")).longValue();
+        long viewportHeight = ((Number) js.executeScript("return window.innerHeight;")).longValue();
+
+        boolean hasScroll = scrollHeight > viewportHeight;
+        log.debug("Has vertical scroll: {} (scrollHeight={}, viewportHeight={})",
+                hasScroll, scrollHeight, viewportHeight);
+
+        return hasScroll;
+    }
+
+    /**
+     * Capture all viewports needed to cover the full page.
+     * Uses native Selenium screenshot for each viewport.
+     *
+     * @param driver the WebDriver instance
+     * @return list of screenshots (1 or more)
+     */
+    public List<BufferedImage> captureAllViewports(WebDriver driver) {
+        List<BufferedImage> screenshots = new ArrayList<>();
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        // Get dimensions
+        long scrollHeight = ((Number) js.executeScript(
+                "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);")).longValue();
+        long viewportHeight = ((Number) js.executeScript("return window.innerHeight;")).longValue();
+
+        int count = calculateScreenshotCount(driver);
+
+        log.info("Capturing {} viewport(s) - page height: {}, viewport height: {}",
+                count, scrollHeight, viewportHeight);
+
+        // Scroll to top first
+        js.executeScript("window.scrollTo(0, 0);");
+        waitForScroll();
+
+        for (int i = 0; i < count; i++) {
+            // Calculate scroll position
+            long scrollPosition = i * viewportHeight;
+
+            // For the last screenshot, scroll to show the bottom of the page
+            if (i == count - 1 && count > 1) {
+                scrollPosition = scrollHeight - viewportHeight;
+                if (scrollPosition < 0) scrollPosition = 0;
+            }
+
+            // Scroll to position
+            js.executeScript("window.scrollTo(0, " + scrollPosition + ");");
+            waitForScroll();
+
+            // Take screenshot
+            BufferedImage screenshot = captureViewport(driver);
+            screenshots.add(screenshot);
+
+            log.debug("Captured viewport {} at scroll position {} ({}x{})",
+                    i + 1, scrollPosition, screenshot.getWidth(), screenshot.getHeight());
+        }
+
+        // Scroll back to top
+        js.executeScript("window.scrollTo(0, 0);");
+
+        return screenshots;
+    }
+
+    /**
+     * Capture exactly N viewports (used when comparing against baselines).
+     * This ensures we take the same number of screenshots as the baseline has.
+     *
+     * @param driver the WebDriver instance
+     * @param count number of screenshots to take
+     * @return list of screenshots
+     */
+    public List<BufferedImage> captureViewports(WebDriver driver, int count) {
+        List<BufferedImage> screenshots = new ArrayList<>();
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        // Get dimensions
+        long scrollHeight = ((Number) js.executeScript(
+                "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);")).longValue();
+        long viewportHeight = ((Number) js.executeScript("return window.innerHeight;")).longValue();
+
+        log.info("Capturing {} viewport(s) as requested - page height: {}, viewport height: {}",
+                count, scrollHeight, viewportHeight);
+
+        // Scroll to top first
+        js.executeScript("window.scrollTo(0, 0);");
+        waitForScroll();
+
+        for (int i = 0; i < count; i++) {
+            // Calculate scroll position
+            long scrollPosition = i * viewportHeight;
+
+            // For the last screenshot, scroll to show the bottom
+            if (i == count - 1 && count > 1) {
+                scrollPosition = Math.max(0, scrollHeight - viewportHeight);
+            }
+
+            // Scroll to position
+            js.executeScript("window.scrollTo(0, " + scrollPosition + ");");
+            waitForScroll();
+
+            // Take screenshot
+            BufferedImage screenshot = captureViewport(driver);
+            screenshots.add(screenshot);
+
+            log.debug("Captured viewport {} at scroll position {} ({}x{})",
+                    i + 1, scrollPosition, screenshot.getWidth(), screenshot.getHeight());
+        }
+
+        // Scroll back to top
+        js.executeScript("window.scrollTo(0, 0);");
+
+        return screenshots;
+    }
+
+    /**
+     * Capture single viewport using native Selenium screenshot.
+     * This captures exactly what is visible in the browser window.
+     *
+     * @param driver the WebDriver instance
+     * @return the captured image
+     */
+    public BufferedImage captureViewport(WebDriver driver) {
         try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
+            TakesScreenshot ts = (TakesScreenshot) driver;
+            byte[] screenshotBytes = ts.getScreenshotAs(OutputType.BYTES);
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshotBytes));
 
-            // Get full page dimensions
-            Map<String, Object> metrics = getPageMetrics(js);
-            long pageWidth = ((Number) metrics.get("width")).longValue();
-            long pageHeight = ((Number) metrics.get("height")).longValue();
-            float dpr = ((Number) metrics.get("devicePixelRatio")).floatValue();
+            log.debug("Captured viewport: {}x{}", image.getWidth(), image.getHeight());
+            return image;
 
-            log.debug("Page dimensions: {}x{}, DPR: {}", pageWidth, pageHeight, dpr);
-
-            // Use CDP to capture full page
-            DevTools devTools = driver.getDevTools();
-            devTools.createSession();
-
-            // Set device metrics to full page size
-            Map<String, Object> deviceMetrics = new java.util.HashMap<>();
-            deviceMetrics.put("width", pageWidth);
-            deviceMetrics.put("height", pageHeight);
-            deviceMetrics.put("deviceScaleFactor", dpr);
-            deviceMetrics.put("mobile", false);
-
-            driver.executeCdpCommand("Emulation.setDeviceMetricsOverride", deviceMetrics);
-
-            // Capture screenshot
-            Map<String, Object> screenshotParams = new java.util.HashMap<>();
-            screenshotParams.put("captureBeyondViewport", true);
-            screenshotParams.put("fromSurface", true);
-
-            Map<String, Object> result = driver.executeCdpCommand("Page.captureScreenshot", screenshotParams);
-            String base64Screenshot = (String) result.get("data");
-
-            // Clear device metrics override
-            driver.executeCdpCommand("Emulation.clearDeviceMetricsOverride", java.util.Collections.emptyMap());
-
-            // Convert to BufferedImage
-            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Screenshot);
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
-
-            log.debug("CDP full page screenshot captured ({}x{})", image.getWidth(), image.getHeight());
-            return new Screenshot(image);
-
-        } catch (Exception e) {
-            log.debug("CDP screenshot failed: {}", e.getMessage());
-            return null;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to capture viewport screenshot", e);
         }
-    }
-
-    /**
-     * Get page metrics using JavaScript.
-     */
-    private Map<String, Object> getPageMetrics(JavascriptExecutor js) {
-        String script = """
-            return {
-                width: Math.max(
-                    document.body.scrollWidth,
-                    document.documentElement.scrollWidth,
-                    document.body.offsetWidth,
-                    document.documentElement.offsetWidth,
-                    document.body.clientWidth,
-                    document.documentElement.clientWidth
-                ),
-                height: Math.max(
-                    document.body.scrollHeight,
-                    document.documentElement.scrollHeight,
-                    document.body.offsetHeight,
-                    document.documentElement.offsetHeight,
-                    document.body.clientHeight,
-                    document.documentElement.clientHeight
-                ),
-                devicePixelRatio: window.devicePixelRatio || 1
-            };
-            """;
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) js.executeScript(script);
-        return result;
-    }
-
-    /**
-     * Get device pixel ratio from browser.
-     */
-    private float getDevicePixelRatio(WebDriver driver) {
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            Object result = js.executeScript("return window.devicePixelRatio || 1;");
-            if (result instanceof Number) {
-                return ((Number) result).floatValue();
-            }
-        } catch (Exception e) {
-            log.debug("Could not get device pixel ratio: {}", e.getMessage());
-        }
-        return 1.0f;
     }
 
     /**
      * Take viewport screenshot (visible area only).
-     * Uses native Selenium screenshot which captures the full viewport width.
+     * Uses native Selenium screenshot.
      */
     public Screenshot takeViewportScreenshot(WebDriver driver) {
         log.debug("Taking viewport screenshot");
-        try {
-            // Use native Selenium screenshot - captures full viewport correctly
-            TakesScreenshot ts = (TakesScreenshot) driver;
-            byte[] screenshotBytes = ts.getScreenshotAs(OutputType.BYTES);
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshotBytes));
-            log.debug("Viewport screenshot captured ({}x{})", image.getWidth(), image.getHeight());
-            return new Screenshot(image);
-        } catch (Exception e) {
-            log.warn("Native viewport screenshot failed, falling back to AShot: {}", e.getMessage());
-            return ashot.takeScreenshot(driver);
-        }
+        BufferedImage image = captureViewport(driver);
+        return new Screenshot(image);
+    }
+
+    /**
+     * Take full page screenshot.
+     * For single-viewport pages, returns viewport screenshot.
+     * For scrollable pages, captures first viewport only (use captureAllViewports for all).
+     */
+    public Screenshot takeFullPageScreenshot(WebDriver driver) {
+        log.debug("Taking full page screenshot (first viewport)");
+
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        js.executeScript("window.scrollTo(0, 0);");
+        waitForScroll();
+
+        return takeViewportScreenshot(driver);
     }
 
     /**
@@ -286,6 +332,17 @@ public class ScreenshotManager {
     }
 
     /**
+     * Wait for scroll animation to complete.
+     */
+    private void waitForScroll() {
+        try {
+            Thread.sleep(SCROLL_WAIT_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
      * Save screenshot to file.
      */
     public File saveScreenshot(Screenshot screenshot, String filePath) throws IOException {
@@ -302,6 +359,17 @@ public class ScreenshotManager {
      */
     public File saveScreenshot(Screenshot screenshot, Path filePath) throws IOException {
         return saveScreenshot(screenshot, filePath.toString());
+    }
+
+    /**
+     * Save BufferedImage to file.
+     */
+    public File saveImage(BufferedImage image, Path filePath) throws IOException {
+        Files.createDirectories(filePath.getParent());
+        File file = filePath.toFile();
+        ImageIO.write(image, "PNG", file);
+        log.debug("Image saved to: {}", filePath);
+        return file;
     }
 
     /**
@@ -338,8 +406,7 @@ public class ScreenshotManager {
      * Create Screenshot object from BufferedImage.
      */
     public Screenshot createScreenshot(BufferedImage image) {
-        Screenshot screenshot = new Screenshot(image);
-        return screenshot;
+        return new Screenshot(image);
     }
 
     /**

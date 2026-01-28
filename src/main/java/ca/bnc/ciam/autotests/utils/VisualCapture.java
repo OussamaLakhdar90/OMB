@@ -3,9 +3,9 @@ package ca.bnc.ciam.autotests.utils;
 import ca.bnc.ciam.autotests.metrics.MetricsCollector;
 import ca.bnc.ciam.autotests.visual.HybridVisualComparator;
 import ca.bnc.ciam.autotests.visual.ScreenshotManager;
-import ca.bnc.ciam.autotests.visual.model.ScreenshotType;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -13,7 +13,6 @@ import org.openqa.selenium.edge.EdgeDriver;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.safari.SafariDriver;
-import ru.yandex.qatools.ashot.Screenshot;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -22,29 +21,32 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Visual capture utility for screenshot recording and comparison.
  *
- * Uses a hybrid comparison approach:
- * 1. Fast pixel-based comparison (OpenCV)
- * 2. AI fallback (DJL + ResNet18) for uncertain cases (gray zone)
+ * Features:
+ * - Fixed resolution: 1920x1080 for consistency
+ * - Dynamic scrolling: automatically captures multiple screenshots for long pages
+ * - Browser-specific baselines: baselines/{browser}/{class}/{step}_1.png, _2.png, etc.
+ * - Clear error messages: distinguishes between structure changes and visual differences
+ * - Hybrid comparison: pixel-based with optional AI fallback
  *
  * Usage:
  * <pre>
  * // In debug_config.json: { "record": true }  → Record mode (creates baselines)
  * // In debug_config.json: { "record": false } → Compare mode (validates against baselines)
  *
- * boolean passed = VisualCapture.captureStep(driver, "LoginTest", "t001_login_page");
+ * boolean passed = VisualCapture.captureStep(driver, "LoginTest", "login_page");
  * assertThat(passed).as("Visual check failed").isTrue();
  * </pre>
  *
- * Files are saved under: {projectRoot}/src/test/resources/baselines/{browser}/{ClassName}/{stepName}.png
- * Diff images for reports: {projectRoot}/target/metrics/visual/{ClassName}_{stepName}_diff.png
- *
- * Browser-specific baselines ensure that Chrome baselines are compared with Chrome screenshots,
- * Firefox with Firefox, etc. This handles cross-browser rendering differences.
+ * File naming:
+ * - Single viewport: baselines/{browser}/{class}/{step}_1.png
+ * - Multiple viewports: baselines/{browser}/{class}/{step}_1.png, {step}_2.png, etc.
  *
  * System properties:
  * - bnc.record.mode: true/false - Enable record mode to create baselines
@@ -88,88 +90,323 @@ public final class VisualCapture {
      */
     private static final ThreadLocal<String> lastDiffBase64 = new ThreadLocal<>();
 
+    /**
+     * Stores the last error message for reporting.
+     */
+    private static final ThreadLocal<String> lastErrorMessage = new ThreadLocal<>();
+
     private VisualCapture() {
         // Utility class - prevent instantiation
     }
 
     /**
-     * Capture a visual step.
+     * Capture a visual step with automatic scrolling support.
      *
-     * If record mode is enabled (bnc.record.mode=true):
-     *   - Takes screenshot and saves as baseline
-     *   - Returns true (always passes in record mode)
+     * Recording mode:
+     *   - Sets window to 1920x1080
+     *   - Calculates how many screenshots needed
+     *   - Saves: step_1.png, step_2.png, etc.
      *
-     * If record mode is disabled (bnc.record.mode=false or not set):
-     *   - Takes screenshot and compares against baseline
-     *   - Returns true if images match within tolerance, false otherwise
+     * Comparison mode:
+     *   - Sets window to 1920x1080
+     *   - Counts baseline files
+     *   - Calculates current page needs
+     *   - If counts differ → FAIL with clear message
+     *   - If counts match → Compare each pair
      *
      * @param driver    the WebDriver instance
      * @param className the test class name (used for folder)
-     * @param stepName  the step name (used for file name)
-     * @return true if passed (or recording), false if mismatch
+     * @param stepName  the step name (used for file prefix)
+     * @return true if passed (or recording), false if mismatch or error
      */
     public static boolean captureStep(WebDriver driver, String className, String stepName) {
-        return captureStep(driver, className, stepName, ScreenshotType.VIEWPORT, DEFAULT_TOLERANCE);
+        return captureStep(driver, className, stepName, DEFAULT_TOLERANCE);
     }
 
     /**
-     * Capture a visual step with custom screenshot type.
+     * Capture a visual step with custom tolerance.
      *
      * @param driver    the WebDriver instance
      * @param className the test class name (used for folder)
-     * @param stepName  the step name (used for file name)
-     * @param type      the screenshot type (FULL_PAGE, VIEWPORT)
-     * @return true if passed (or recording), false if mismatch
-     */
-    public static boolean captureStep(WebDriver driver, String className, String stepName, ScreenshotType type) {
-        return captureStep(driver, className, stepName, type, DEFAULT_TOLERANCE);
-    }
-
-    /**
-     * Capture a visual step with custom screenshot type and tolerance.
-     *
-     * @param driver    the WebDriver instance
-     * @param className the test class name (used for folder)
-     * @param stepName  the step name (used for file name)
-     * @param type      the screenshot type (FULL_PAGE, VIEWPORT)
+     * @param stepName  the step name (used for file prefix)
      * @param tolerance the comparison tolerance (0.0 to 1.0)
-     * @return true if passed (or recording), false if mismatch
+     * @return true if passed (or recording), false if mismatch or error
      */
-    public static boolean captureStep(WebDriver driver, String className, String stepName,
-                                       ScreenshotType type, double tolerance) {
+    public static boolean captureStep(WebDriver driver, String className, String stepName, double tolerance) {
         boolean isRecordMode = isRecordMode();
         long startTime = System.currentTimeMillis();
 
-        // Get baseline path (browser-specific)
-        String browserName = detectBrowserName(driver);
-        Path baselinePath = getBaselinePath(driver, className, stepName);
-
-        log.info("Visual capture: {}/{} - Browser: {} - Mode: {} - Baseline: {}",
-                className, stepName, browserName, isRecordMode ? "RECORD" : "COMPARE", baselinePath);
-
-        // Clear previous diff
+        // Clear previous state
         lastDiffBase64.remove();
+        lastErrorMessage.remove();
+
+        // Get browser-specific baseline directory
+        String browserName = detectBrowserName(driver);
+        Path baselineDir = getBaselineDir(browserName, className);
+
+        log.info("========================================");
+        log.info("Visual Capture: {}/{}", className, stepName);
+        log.info("Browser: {}", browserName);
+        log.info("Mode: {}", isRecordMode ? "RECORD" : "COMPARE");
+        log.info("Baseline directory: {}", baselineDir);
+        log.info("========================================");
 
         try {
-            // Take screenshot
-            Screenshot screenshot = screenshotManager.takeScreenshot(driver, type);
-            BufferedImage currentImage = screenshot.getImage();
+            // Set standard resolution for consistency
+            Dimension originalSize = screenshotManager.ensureStandardResolution(driver);
+            log.info("Window size set to {}x{}", ScreenshotManager.DEFAULT_WIDTH, ScreenshotManager.DEFAULT_HEIGHT);
 
+            boolean result;
             if (isRecordMode) {
-                // RECORD MODE: Save as baseline
-                boolean success = saveBaseline(currentImage, baselinePath, className, stepName);
-                recordMetric(className, stepName, true, 0, tolerance, "BASELINE_CREATED", null, startTime);
-                return success;
+                result = recordBaselines(driver, baselineDir, className, stepName, startTime);
             } else {
-                // COMPARE MODE: Compare with baseline
-                return compareWithBaseline(currentImage, baselinePath, className, stepName, tolerance, startTime);
+                result = compareWithBaselines(driver, baselineDir, className, stepName, tolerance, startTime);
             }
 
+            // Restore original window size
+            screenshotManager.restoreWindowSize(driver, originalSize);
+
+            return result;
+
         } catch (Exception e) {
-            log.error("Visual capture failed for {}/{}: {}", className, stepName, e.getMessage(), e);
-            recordMetric(className, stepName, false, 0, tolerance, "ERROR", null, startTime);
+            String errorMsg = "Visual capture failed: " + e.getMessage();
+            log.error("========================================");
+            log.error("VISUAL CAPTURE ERROR: {}/{}", className, stepName);
+            log.error("Error: {}", e.getMessage(), e);
+            log.error("========================================");
+            lastErrorMessage.set(errorMsg);
+            recordMetric(className, stepName, false, 0, tolerance, "ERROR: " + e.getMessage(), null, startTime);
             return false;
         }
+    }
+
+    /**
+     * Record baselines for the current page.
+     */
+    private static boolean recordBaselines(WebDriver driver, Path baselineDir, String className,
+                                            String stepName, long startTime) throws IOException {
+        // Calculate how many screenshots needed
+        int screenshotCount = screenshotManager.calculateScreenshotCount(driver);
+        log.info("Page requires {} screenshot(s)", screenshotCount);
+
+        // Capture all viewports
+        List<BufferedImage> screenshots = screenshotManager.captureAllViewports(driver);
+
+        // Create baseline directory
+        Files.createDirectories(baselineDir);
+
+        // Save each screenshot
+        for (int i = 0; i < screenshots.size(); i++) {
+            Path baselinePath = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
+            screenshotManager.saveImage(screenshots.get(i), baselinePath);
+            log.info("RECORDED baseline {}: {}", i + 1, baselinePath);
+        }
+
+        log.info("========================================");
+        log.info("RECORD COMPLETE: {}/{}", className, stepName);
+        log.info("Screenshots saved: {}", screenshots.size());
+        log.info("========================================");
+
+        recordMetric(className, stepName, true, 0, 0, "BASELINE_CREATED", null, startTime);
+        return true;
+    }
+
+    /**
+     * Compare current page with baselines.
+     */
+    private static boolean compareWithBaselines(WebDriver driver, Path baselineDir, String className,
+                                                 String stepName, double tolerance, long startTime) throws IOException {
+        // Count existing baseline files
+        int baselineCount = countBaselineFiles(baselineDir, stepName);
+
+        if (baselineCount == 0) {
+            String errorMsg = String.format(
+                    "No baselines found for %s/%s at %s. Run with record=true to create baselines.",
+                    className, stepName, baselineDir);
+            log.error("========================================");
+            log.error("BASELINE MISSING");
+            log.error(errorMsg);
+            log.error("========================================");
+            lastErrorMessage.set(errorMsg);
+            recordMetric(className, stepName, false, 0, tolerance, "BASELINE_MISSING", null, startTime);
+            return false;
+        }
+
+        // Calculate how many screenshots current page needs
+        int currentCount = screenshotManager.calculateScreenshotCount(driver);
+
+        log.info("Baseline count: {}, Current page needs: {}", baselineCount, currentCount);
+
+        // Check for structure change
+        if (baselineCount != currentCount) {
+            String errorMsg = String.format(
+                    "PAGE STRUCTURE CHANGED: Baseline has %d screenshot(s), but current page needs %d. " +
+                    "This indicates the page content height has changed significantly. " +
+                    "If this is expected, re-record baselines with record=true.",
+                    baselineCount, currentCount);
+            log.error("========================================");
+            log.error("STRUCTURE CHANGE DETECTED");
+            log.error("Baseline screenshots: {}", baselineCount);
+            log.error("Current page needs: {}", currentCount);
+            log.error("Difference: {} screenshot(s)", Math.abs(baselineCount - currentCount));
+            log.error("========================================");
+            lastErrorMessage.set(errorMsg);
+            recordMetric(className, stepName, false, 0, tolerance,
+                    "STRUCTURE_CHANGED: expected=" + baselineCount + ", actual=" + currentCount, null, startTime);
+            return false;
+        }
+
+        // Capture current screenshots (same count as baselines)
+        List<BufferedImage> currentScreenshots = screenshotManager.captureViewports(driver, baselineCount);
+
+        // Compare each pair
+        List<ComparisonResult> results = new ArrayList<>();
+        boolean allPassed = true;
+
+        for (int i = 0; i < baselineCount; i++) {
+            Path baselinePath = baselineDir.resolve(stepName + "_" + (i + 1) + ".png");
+            BufferedImage baseline = ImageIO.read(baselinePath.toFile());
+            BufferedImage current = currentScreenshots.get(i);
+
+            ComparisonResult result = compareSingleScreenshot(baseline, current, tolerance, i + 1);
+            results.add(result);
+
+            if (!result.passed) {
+                allPassed = false;
+                // Save diff and actual for failed comparison
+                saveDiffAndActual(result.diffImage, current, className, stepName, i + 1);
+            }
+
+            log.info("Screenshot {}: {} (diff: {:.4f}%)",
+                    i + 1, result.passed ? "PASS" : "FAIL", result.diffPercentage * 100);
+        }
+
+        // Log summary
+        logComparisonSummary(className, stepName, results, allPassed);
+
+        // Record metrics
+        double maxDiff = results.stream().mapToDouble(r -> r.diffPercentage).max().orElse(0);
+        String status = allPassed ? "SUCCESS" : "VISUAL_MISMATCH";
+        recordMetric(className, stepName, allPassed, maxDiff, tolerance, status, null, startTime);
+
+        return allPassed;
+    }
+
+    /**
+     * Compare a single screenshot pair.
+     */
+    private static ComparisonResult compareSingleScreenshot(BufferedImage baseline, BufferedImage current,
+                                                             double tolerance, int index) {
+        try {
+            HybridVisualComparator.HybridComparisonResult result =
+                    getHybridComparator().compare(baseline, current, tolerance, null);
+
+            return new ComparisonResult(
+                    index,
+                    result.isMatch(),
+                    result.getDiffPercentage(),
+                    result.getDiffImage(),
+                    result.getStrategy().toString(),
+                    result.usedAI()
+            );
+        } catch (Exception e) {
+            log.error("Comparison failed for screenshot {}: {}", index, e.getMessage());
+            return new ComparisonResult(index, false, 1.0, null, "ERROR", false);
+        }
+    }
+
+    /**
+     * Log comparison summary.
+     */
+    private static void logComparisonSummary(String className, String stepName,
+                                              List<ComparisonResult> results, boolean allPassed) {
+        log.info("========================================");
+        if (allPassed) {
+            log.info("VISUAL VALIDATION PASSED: {}/{}", className, stepName);
+        } else {
+            log.error("VISUAL VALIDATION FAILED: {}/{}", className, stepName);
+        }
+
+        for (ComparisonResult r : results) {
+            String status = r.passed ? "✓ PASS" : "✗ FAIL";
+            String aiInfo = r.usedAI ? " [AI]" : "";
+            log.info("  Screenshot {}: {} - diff: {:.4f}% - strategy: {}{}",
+                    r.index, status, r.diffPercentage * 100, r.strategy, aiInfo);
+        }
+
+        long passCount = results.stream().filter(r -> r.passed).count();
+        log.info("Result: {}/{} screenshots passed", passCount, results.size());
+        log.info("========================================");
+
+        if (!allPassed) {
+            StringBuilder errorMsg = new StringBuilder("Visual mismatch detected:\n");
+            for (ComparisonResult r : results) {
+                if (!r.passed) {
+                    errorMsg.append(String.format("  - Screenshot %d: %.4f%% difference (tolerance: %.4f%%)\n",
+                            r.index, r.diffPercentage * 100, DEFAULT_TOLERANCE * 100));
+                }
+            }
+            lastErrorMessage.set(errorMsg.toString());
+        }
+    }
+
+    /**
+     * Save diff and actual images for failed comparison.
+     */
+    private static void saveDiffAndActual(BufferedImage diffImage, BufferedImage actualImage,
+                                           String className, String stepName, int index) {
+        try {
+            Path reportDir = getReportVisualDir();
+            Files.createDirectories(reportDir);
+
+            String suffix = "_" + index;
+
+            // Save diff
+            if (diffImage != null) {
+                Path diffPath = reportDir.resolve(className + "_" + stepName + suffix + "_diff.png");
+                ImageIO.write(diffImage, "PNG", diffPath.toFile());
+                log.info("Diff image saved: {}", diffPath);
+
+                // Store Base64 for embedding (only first diff)
+                if (index == 1) {
+                    lastDiffBase64.set(imageToBase64(diffImage));
+                }
+            }
+
+            // Save actual
+            Path actualPath = reportDir.resolve(className + "_" + stepName + suffix + "_actual.png");
+            ImageIO.write(actualImage, "PNG", actualPath.toFile());
+            log.info("Actual image saved: {}", actualPath);
+
+        } catch (IOException e) {
+            log.warn("Failed to save diff/actual images: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Count baseline files for a step.
+     * Looks for files named: stepName_1.png, stepName_2.png, etc.
+     */
+    private static int countBaselineFiles(Path baselineDir, String stepName) {
+        if (!Files.exists(baselineDir)) {
+            return 0;
+        }
+
+        int count = 0;
+        while (Files.exists(baselineDir.resolve(stepName + "_" + (count + 1) + ".png"))) {
+            count++;
+        }
+
+        log.debug("Found {} baseline file(s) for step '{}'", count, stepName);
+        return count;
+    }
+
+    /**
+     * Get baseline directory for browser and class.
+     */
+    private static Path getBaselineDir(String browserName, String className) {
+        Path baselinesRoot = getBaselinesRoot();
+        return baselinesRoot.resolve(browserName).resolve(className);
     }
 
     /**
@@ -188,6 +425,13 @@ public final class VisualCapture {
     }
 
     /**
+     * Get the last error message.
+     */
+    public static String getLastErrorMessage() {
+        return lastErrorMessage.get();
+    }
+
+    /**
      * Check if AI-based comparison is available.
      */
     public static boolean isAIAvailable() {
@@ -195,18 +439,7 @@ public final class VisualCapture {
     }
 
     /**
-     * Get the baseline path for a class and step.
-     * Uses browser-specific paths: baselines/{browser}/{className}/{stepName}.png
-     */
-    private static Path getBaselinePath(WebDriver driver, String className, String stepName) {
-        Path baselinesRoot = getBaselinesRoot();
-        String browserName = detectBrowserName(driver);
-        return baselinesRoot.resolve(browserName).resolve(className).resolve(stepName + ".png");
-    }
-
-    /**
      * Detect the browser name from the WebDriver instance.
-     * Returns lowercase browser name: chrome, firefox, edge, safari, ie, unknown
      */
     private static String detectBrowserName(WebDriver driver) {
         if (driver == null) {
@@ -232,7 +465,6 @@ public final class VisualCapture {
                 Capabilities caps = ((HasCapabilities) driver).getCapabilities();
                 String browserName = caps.getBrowserName();
                 if (browserName != null && !browserName.isEmpty()) {
-                    // Normalize browser name
                     browserName = browserName.toLowerCase().trim();
                     if (browserName.contains("chrome")) return "chrome";
                     if (browserName.contains("firefox")) return "firefox";
@@ -251,24 +483,27 @@ public final class VisualCapture {
 
     /**
      * Get the baselines root directory.
-     * Priority: 1) bnc.baselines.root system property, 2) {projectRoot}/src/test/resources/baselines
      */
     private static Path getBaselinesRoot() {
         String customRoot = System.getProperty(BASELINES_ROOT_PROPERTY);
         if (customRoot != null && !customRoot.isEmpty()) {
             return Paths.get(customRoot).toAbsolutePath();
         }
-        return PROJECT_ROOT.resolve("src/test/resources").resolve(BASELINES_DIR_NAME);
+        return PROJECT_ROOT.resolve("src").resolve("test").resolve("resources").resolve(BASELINES_DIR_NAME);
     }
 
     /**
-     * Detect the project root by looking for pom.xml or build.gradle.
-     * Falls back to user.dir if not found.
+     * Get the report visual directory.
+     */
+    private static Path getReportVisualDir() {
+        return PROJECT_ROOT.resolve(REPORT_VISUAL_DIR_NAME);
+    }
+
+    /**
+     * Detect the project root.
      */
     private static Path detectProjectRoot() {
         Path currentDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
-
-        // Walk up the directory tree to find project root
         Path dir = currentDir;
         while (dir != null) {
             if (Files.exists(dir.resolve("pom.xml")) || Files.exists(dir.resolve("build.gradle"))) {
@@ -277,144 +512,8 @@ public final class VisualCapture {
             }
             dir = dir.getParent();
         }
-
-        // Fall back to current directory
         log.debug("Project root not detected, using user.dir: {}", currentDir);
         return currentDir;
-    }
-
-    /**
-     * Save screenshot as baseline.
-     */
-    private static boolean saveBaseline(BufferedImage image, Path baselinePath,
-                                         String className, String stepName) {
-        try {
-            // Create directory if it doesn't exist
-            Path parentDir = baselinePath.getParent();
-            if (parentDir != null && !Files.exists(parentDir)) {
-                Files.createDirectories(parentDir);
-                log.info("Created baseline directory: {}", parentDir);
-            }
-
-            // Save image
-            ImageIO.write(image, "PNG", baselinePath.toFile());
-            log.info("RECORDED baseline: {}/{} -> {}", className, stepName, baselinePath);
-
-            return true;
-
-        } catch (IOException e) {
-            log.error("Failed to save baseline {}/{}: {}", className, stepName, e.getMessage(), e);
-            return false;
-        }
-    }
-
-    /**
-     * Compare screenshot with baseline using hybrid comparison (pixel + AI fallback).
-     */
-    private static boolean compareWithBaseline(BufferedImage currentImage, Path baselinePath,
-                                                String className, String stepName, double tolerance,
-                                                long startTime) {
-        try {
-            // Check if baseline exists
-            if (!Files.exists(baselinePath)) {
-                log.error("FAIL: Baseline not found for {}/{} at {}", className, stepName, baselinePath);
-                log.error("Run with record=true in debug_config.json to create baseline");
-                recordMetric(className, stepName, false, 0, tolerance, "BASELINE_MISSING", null, startTime);
-                return false;
-            }
-
-            // Load baseline
-            BufferedImage baselineImage = ImageIO.read(baselinePath.toFile());
-
-            // Compare using hybrid strategy (pixel-based + AI fallback)
-            HybridVisualComparator.HybridComparisonResult result =
-                    getHybridComparator().compare(baselineImage, currentImage, tolerance, null);
-
-            String diffImagePath = null;
-
-            if (result.isMatch()) {
-                String strategyInfo = result.usedAI()
-                        ? String.format(" [AI: %.2f%%]", result.getAiResult().getSimilarity() * 100)
-                        : "";
-                log.info("PASS: Visual match for {}/{} (diff: {}%, strategy: {}){}",
-                        className, stepName,
-                        String.format("%.4f", result.getDiffPercentage() * 100),
-                        result.getStrategy(),
-                        strategyInfo);
-                recordMetric(className, stepName, true, result.getDiffPercentage(), tolerance,
-                        "SUCCESS_" + result.getStrategy(), null, startTime);
-                return true;
-            } else {
-                String strategyInfo = result.usedAI()
-                        ? String.format(" [AI: %.2f%%]", result.getAiResult().getSimilarity() * 100)
-                        : "";
-                log.error("FAIL: Visual mismatch for {}/{} (diff: {}%, tolerance: {}%, strategy: {}){}",
-                        className, stepName,
-                        String.format("%.4f", result.getDiffPercentage() * 100),
-                        String.format("%.4f", tolerance * 100),
-                        result.getStrategy(),
-                        strategyInfo);
-
-                // Save diff image to report folder
-                diffImagePath = saveDiffToReport(result.getDiffImage(), className, stepName);
-
-                // Save actual image for reference
-                saveActualToReport(currentImage, className, stepName);
-
-                // Store Base64 for embedding
-                if (result.getDiffImage() != null) {
-                    lastDiffBase64.set(imageToBase64(result.getDiffImage()));
-                }
-
-                recordMetric(className, stepName, false, result.getDiffPercentage(), tolerance,
-                        "FAILURE_" + result.getStrategy(), diffImagePath, startTime);
-                return false;
-            }
-
-        } catch (IOException e) {
-            log.error("Failed to compare {}/{}: {}", className, stepName, e.getMessage(), e);
-            recordMetric(className, stepName, false, 0, tolerance, "ERROR", null, startTime);
-            return false;
-        }
-    }
-
-    /**
-     * Get the report visual directory path (absolute).
-     */
-    private static Path getReportVisualDir() {
-        return PROJECT_ROOT.resolve(REPORT_VISUAL_DIR_NAME);
-    }
-
-    /**
-     * Save diff image to report folder.
-     */
-    private static String saveDiffToReport(BufferedImage diffImage, String className, String stepName) {
-        if (diffImage == null) return null;
-
-        try {
-            Path diffPath = getReportVisualDir().resolve(className + "_" + stepName + "_diff.png");
-            Files.createDirectories(diffPath.getParent());
-            ImageIO.write(diffImage, "PNG", diffPath.toFile());
-            log.info("Saved diff image to report: {}", diffPath);
-            return diffPath.toString();
-        } catch (IOException e) {
-            log.warn("Could not save diff image: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Save actual image to report folder.
-     */
-    private static void saveActualToReport(BufferedImage actualImage, String className, String stepName) {
-        try {
-            Path actualPath = getReportVisualDir().resolve(className + "_" + stepName + "_actual.png");
-            Files.createDirectories(actualPath.getParent());
-            ImageIO.write(actualImage, "PNG", actualPath.toFile());
-            log.info("Saved actual image to report: {}", actualPath);
-        } catch (IOException e) {
-            log.warn("Could not save actual image: {}", e.getMessage());
-        }
     }
 
     /**
@@ -455,6 +554,28 @@ public final class VisualCapture {
             }
         } catch (Exception e) {
             log.debug("MetricsCollector not available: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Result of comparing a single screenshot.
+     */
+    private static class ComparisonResult {
+        final int index;
+        final boolean passed;
+        final double diffPercentage;
+        final BufferedImage diffImage;
+        final String strategy;
+        final boolean usedAI;
+
+        ComparisonResult(int index, boolean passed, double diffPercentage,
+                         BufferedImage diffImage, String strategy, boolean usedAI) {
+            this.index = index;
+            this.passed = passed;
+            this.diffPercentage = diffPercentage;
+            this.diffImage = diffImage;
+            this.strategy = strategy;
+            this.usedAI = usedAI;
         }
     }
 }
