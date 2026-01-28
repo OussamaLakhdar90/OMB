@@ -19,6 +19,11 @@ public final class Validate {
     private static final Object SYNC_LOCK = new Object();
     private static boolean failOnError = true;
 
+    /**
+     * Default wait timeout for element existence checks (in seconds).
+     */
+    private static final int DEFAULT_WAIT_TIMEOUT_SECONDS = 30;
+
     private Validate() {
         // Utility class - prevent instantiation
     }
@@ -810,6 +815,30 @@ public final class Validate {
         // ==================== existsWaitSeconds() methods ====================
 
         /**
+         * Validate that a WebElement exists.
+         * Uses the default timeout of 30 seconds.
+         * Polls until element is displayed or timeout is reached.
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         */
+        public static void existsWaitSeconds(WebElement element, String verificationContext) {
+            existsWaitSeconds(element, DEFAULT_WAIT_TIMEOUT_SECONDS, verificationContext);
+        }
+
+        /**
+         * Validate that an IElement exists.
+         * Uses the default timeout of 30 seconds.
+         * Polls until element is displayed or timeout is reached.
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         */
+        public static void existsWaitSeconds(IElement element, String verificationContext) {
+            existsWaitSeconds(element, DEFAULT_WAIT_TIMEOUT_SECONDS, verificationContext);
+        }
+
+        /**
          * Validate that a WebElement exists with specified wait time.
          * Polls until element is displayed or timeout is reached.
          */
@@ -884,6 +913,30 @@ public final class Validate {
         }
 
         // ==================== doesNotExistWaitSeconds() methods ====================
+
+        /**
+         * Wait for a WebElement to not exist (disappear/become not displayed).
+         * Uses the default timeout of 30 seconds.
+         *
+         * @param element the WebElement to check
+         * @param verificationContext description for logging
+         * @return true if element disappeared within timeout, false otherwise
+         */
+        public static boolean doesNotExistWaitSeconds(WebElement element, String verificationContext) {
+            return doesNotExistWaitSeconds(element, DEFAULT_WAIT_TIMEOUT_SECONDS, verificationContext);
+        }
+
+        /**
+         * Wait for an IElement to not exist (disappear/become not displayed).
+         * Uses the default timeout of 30 seconds.
+         *
+         * @param element the IElement to check
+         * @param verificationContext description for logging
+         * @return true if element disappeared within timeout, false otherwise
+         */
+        public static boolean doesNotExistWaitSeconds(IElement element, String verificationContext) {
+            return doesNotExistWaitSeconds(element, DEFAULT_WAIT_TIMEOUT_SECONDS, verificationContext);
+        }
 
         /**
          * Wait for a WebElement to not exist (disappear/become not displayed).
