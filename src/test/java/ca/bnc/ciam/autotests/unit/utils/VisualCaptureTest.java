@@ -17,6 +17,8 @@ public class VisualCaptureTest {
     private String originalRecordMode;
     private String originalLang;
     private String originalLangFallback;
+    private String originalHubUse;
+    private String originalHubUrl;
 
     @BeforeMethod
     public void setUp() {
@@ -24,6 +26,8 @@ public class VisualCaptureTest {
         originalRecordMode = System.getProperty("bnc.record.mode");
         originalLang = System.getProperty("bnc.web.gui.lang");
         originalLangFallback = System.getProperty("lang");
+        originalHubUse = System.getProperty("bnc.test.hub.use");
+        originalHubUrl = System.getProperty("bnc.test.hub.url");
     }
 
     @AfterMethod
@@ -43,6 +47,16 @@ public class VisualCaptureTest {
             System.setProperty("lang", originalLangFallback);
         } else {
             System.clearProperty("lang");
+        }
+        if (originalHubUse != null) {
+            System.setProperty("bnc.test.hub.use", originalHubUse);
+        } else {
+            System.clearProperty("bnc.test.hub.use");
+        }
+        if (originalHubUrl != null) {
+            System.setProperty("bnc.test.hub.url", originalHubUrl);
+        } else {
+            System.clearProperty("bnc.test.hub.url");
         }
     }
 
@@ -317,5 +331,78 @@ public class VisualCaptureTest {
         ca.bnc.ciam.autotests.web.elements.IElement[] emptyElements = new ca.bnc.ciam.autotests.web.elements.IElement[0];
         boolean result = VisualCapture.captureStepIgnoring(null, "TestClass", "testStep", emptyElements);
         assertThat(result).isFalse();
+    }
+
+    // ===========================================
+    // Local Execution Detection Tests
+    // ===========================================
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseFalse_ReturnsTrue() {
+        System.setProperty("bnc.test.hub.use", "false");
+        System.clearProperty("bnc.test.hub.url");
+
+        // hub.use=false means LOCAL execution
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseTrue_ReturnsFalse() {
+        System.setProperty("bnc.test.hub.use", "true");
+
+        // hub.use=true means PIPELINE execution
+        assertThat(VisualCapture.isLocalExecution()).isFalse();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseFalseAndUrlSet_ReturnsTrue() {
+        // This is the critical fix: hub.use=false should mean LOCAL
+        // even if URL is configured in debug_config.json
+        System.setProperty("bnc.test.hub.use", "false");
+        System.setProperty("bnc.test.hub.url", "https://saucelabs.com/wd/hub");
+
+        // hub.use=false takes priority over URL being set
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseTrueUpperCase_ReturnsFalse() {
+        System.setProperty("bnc.test.hub.use", "TRUE");
+
+        // Case-insensitive check
+        assertThat(VisualCapture.isLocalExecution()).isFalse();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseFalseUpperCase_ReturnsTrue() {
+        System.setProperty("bnc.test.hub.use", "FALSE");
+
+        // Case-insensitive check
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenNoPropertiesSet_ReturnsTrue() {
+        System.clearProperty("bnc.test.hub.use");
+        System.clearProperty("bnc.test.hub.url");
+
+        // Default to LOCAL when no properties are set
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseInvalidValue_ReturnsTrue() {
+        System.setProperty("bnc.test.hub.use", "invalid");
+
+        // Invalid value != "true", so it's LOCAL
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
+    }
+
+    @Test
+    public void testIsLocalExecution_WhenHubUseEmpty_ReturnsTrue() {
+        System.setProperty("bnc.test.hub.use", "");
+
+        // Empty value != "true", so it's LOCAL
+        assertThat(VisualCapture.isLocalExecution()).isTrue();
     }
 }

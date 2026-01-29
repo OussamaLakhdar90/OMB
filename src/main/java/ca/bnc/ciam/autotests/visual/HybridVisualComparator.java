@@ -231,19 +231,28 @@ public class HybridVisualComparator implements AutoCloseable {
 
     /**
      * Check if we're running locally (not in pipeline/SauceLabs).
-     * Local execution means no SauceLabs tunnel is configured.
+     * The bnc.test.hub.use property is the primary indicator:
+     * - If "true" → Pipeline mode (SauceLabs)
+     * - If "false" → Local mode (even if URL is configured)
+     * - If not set → Check other indicators
      */
     private boolean isLocalExecution() {
-        // Check for SauceLabs/pipeline indicators
-        String hubUse = System.getProperty("bnc.test.hub.use", "false");
-        String hubUrl = System.getProperty("bnc.test.hub.url", "");
+        // Primary indicator: explicit hub use flag
+        String hubUse = System.getProperty("bnc.test.hub.use");
+
+        // If explicitly set, use that value
+        if (hubUse != null) {
+            return !"true".equalsIgnoreCase(hubUse);
+        }
+
+        // Fallback: check SAUCE_USERNAME env var only if hub.use is not set
         String sauceUsername = System.getenv("SAUCE_USERNAME");
+        if (sauceUsername != null && !sauceUsername.isEmpty()) {
+            return false; // Pipeline mode
+        }
 
-        boolean isPipeline = "true".equalsIgnoreCase(hubUse)
-                || (hubUrl != null && !hubUrl.isEmpty())
-                || (sauceUsername != null && !sauceUsername.isEmpty());
-
-        return !isPipeline;
+        // Default to local if no indicators found
+        return true;
     }
 
     @Override

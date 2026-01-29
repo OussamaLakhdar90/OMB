@@ -800,21 +800,36 @@ public final class VisualCapture {
 
     /**
      * Check if we're running locally (not in pipeline/SauceLabs).
-     * Local execution means no SauceLabs tunnel is configured.
+     * The bnc.test.hub.use property is the primary indicator:
+     * - If "true" → Pipeline mode (SauceLabs)
+     * - If "false" → Local mode (even if URL is configured)
+     * - If not set → Check other indicators
      *
      * @return true if running locally, false if running in pipeline
      */
     public static boolean isLocalExecution() {
-        // Check for SauceLabs/pipeline indicators
-        String hubUse = System.getProperty("bnc.test.hub.use", "false");
-        String hubUrl = System.getProperty("bnc.test.hub.url", "");
+        // Primary indicator: explicit hub use flag
+        String hubUse = System.getProperty("bnc.test.hub.use");
+
+        // If explicitly set, use that value
+        if (hubUse != null) {
+            boolean isPipeline = "true".equalsIgnoreCase(hubUse);
+            log.debug("isLocalExecution: bnc.test.hub.use={} → {}", hubUse, !isPipeline ? "LOCAL" : "PIPELINE");
+            return !isPipeline;
+        }
+
+        // Fallback: check other indicators only if hub.use is not set
         String sauceUsername = System.getenv("SAUCE_USERNAME");
+        boolean hasSauceCredentials = sauceUsername != null && !sauceUsername.isEmpty();
 
-        boolean isPipeline = "true".equalsIgnoreCase(hubUse)
-                || (hubUrl != null && !hubUrl.isEmpty())
-                || (sauceUsername != null && !sauceUsername.isEmpty());
+        if (hasSauceCredentials) {
+            log.debug("isLocalExecution: SAUCE_USERNAME env var detected → PIPELINE");
+            return false;
+        }
 
-        return !isPipeline;
+        // Default to local if no indicators found
+        log.debug("isLocalExecution: No pipeline indicators → LOCAL");
+        return true;
     }
 
     /**

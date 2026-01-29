@@ -165,6 +165,13 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.version}</version>
         </dependency>
+        <!-- PyTorch native libraries - auto-downloads correct version for OS -->
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-native-auto</artifactId>
+            <version>2.1.1</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>
