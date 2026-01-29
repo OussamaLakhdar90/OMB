@@ -97,6 +97,39 @@ public class AIImageComparator implements AutoCloseable {
     /** Embedded model resource path */
     private static final String EMBEDDED_MODEL_RESOURCE = "/models/resnet18/traced_resnet18.pt";
 
+    /** Static flag to track DJL availability - checked once at class load */
+    private static final boolean DJL_AVAILABLE;
+    private static final String DJL_UNAVAILABLE_REASON;
+
+    static {
+        boolean available = false;
+        String reason = null;
+        try {
+            // Check if core DJL classes are available using reflection
+            Class.forName("ai.djl.repository.zoo.Criteria");
+            Class.forName("ai.djl.inference.Predictor");
+            Class.forName("ai.djl.translate.TranslateException");
+            Class.forName("ai.djl.pytorch.engine.PtEngine");
+            available = true;
+        } catch (ClassNotFoundException e) {
+            reason = "DJL classes not found: " + e.getMessage();
+        } catch (NoClassDefFoundError e) {
+            reason = "DJL dependency missing: " + e.getMessage();
+        } catch (Exception e) {
+            reason = "DJL check failed: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+        DJL_AVAILABLE = available;
+        DJL_UNAVAILABLE_REASON = reason;
+    }
+
+    /**
+     * Check if DJL is available in the classpath.
+     * @return true if DJL classes are present
+     */
+    public static boolean isDjlAvailable() {
+        return DJL_AVAILABLE;
+    }
+
     /**
      * Initialize the DJL model lazily.
      * Tries loading in this order:
@@ -107,6 +140,13 @@ public class AIImageComparator implements AutoCloseable {
      */
     private synchronized void initialize() {
         if (initialized) {
+            return;
+        }
+
+        // First check if DJL is available
+        if (!DJL_AVAILABLE) {
+            initError = DJL_UNAVAILABLE_REASON;
+            log.warn("DJL is not available: {}. AI comparison will be disabled.", DJL_UNAVAILABLE_REASON);
             return;
         }
 
