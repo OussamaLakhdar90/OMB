@@ -15,16 +15,22 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Unit tests for AIImageComparator.
  * Tests AI-based image comparison using DJL + ResNet18.
  *
- * Note: These tests may take longer on first run as the model is downloaded (~45MB).
+ * The model is embedded in the library JAR and loaded automatically.
  * If DJL/PyTorch is not available, tests will gracefully skip AI-specific assertions.
  */
 @Test(groups = "unit")
 public class AIImageComparatorTest {
 
     private AIImageComparator comparator;
+    private String originalModelPath;
+    private String originalModelUrl;
 
     @BeforeClass
     public void setUp() {
+        // Save original system properties
+        originalModelPath = System.getProperty(AIImageComparator.MODEL_PATH_PROPERTY);
+        originalModelUrl = System.getProperty(AIImageComparator.MODEL_URL_PROPERTY);
+
         comparator = new AIImageComparator(0.90);
     }
 
@@ -32,6 +38,17 @@ public class AIImageComparatorTest {
     public void tearDown() {
         if (comparator != null) {
             comparator.close();
+        }
+        // Restore original system properties
+        if (originalModelPath != null) {
+            System.setProperty(AIImageComparator.MODEL_PATH_PROPERTY, originalModelPath);
+        } else {
+            System.clearProperty(AIImageComparator.MODEL_PATH_PROPERTY);
+        }
+        if (originalModelUrl != null) {
+            System.setProperty(AIImageComparator.MODEL_URL_PROPERTY, originalModelUrl);
+        } else {
+            System.clearProperty(AIImageComparator.MODEL_URL_PROPERTY);
         }
     }
 
@@ -211,6 +228,32 @@ public class AIImageComparatorTest {
     }
 
     // ===========================================
+    // System Property Tests
+    // ===========================================
+
+    @Test
+    public void testModelPathProperty_ConstantDefined() {
+        assertThat(AIImageComparator.MODEL_PATH_PROPERTY).isEqualTo("bnc.visual.ai.model.path");
+    }
+
+    @Test
+    public void testModelUrlProperty_ConstantDefined() {
+        assertThat(AIImageComparator.MODEL_URL_PROPERTY).isEqualTo("bnc.visual.ai.model.url");
+    }
+
+    @Test
+    public void testWithInvalidModelPath_GracefullyFallsBack() {
+        System.setProperty(AIImageComparator.MODEL_PATH_PROPERTY, "/nonexistent/path/to/model");
+
+        try (AIImageComparator testComparator = new AIImageComparator()) {
+            // Should not throw, but may or may not be available depending on fallback
+            assertThat(testComparator).isNotNull();
+        } finally {
+            System.clearProperty(AIImageComparator.MODEL_PATH_PROPERTY);
+        }
+    }
+
+    // ===========================================
     // Close Tests
     // ===========================================
 
@@ -219,6 +262,16 @@ public class AIImageComparatorTest {
         AIImageComparator tempComparator = new AIImageComparator();
         tempComparator.close();
         tempComparator.close(); // Should not throw
+    }
+
+    @Test
+    public void testClose_AfterClose_IsNotAvailable() {
+        AIImageComparator tempComparator = new AIImageComparator();
+        boolean wasAvailable = tempComparator.isAvailable();
+        tempComparator.close();
+
+        // After close, should not be available
+        assertThat(tempComparator.isAvailable()).isFalse();
     }
 
     // ===========================================

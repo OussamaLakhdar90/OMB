@@ -413,7 +413,7 @@ boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "
 **Hybrid Comparison Strategy:**
 1. Fast pixel-based comparison (OpenCV) runs first
 2. If result is in "gray zone" (5-20% pixel diff), AI fallback is used
-3. AI uses DJL + ResNet18 for perceptual similarity (~45MB model, auto-downloaded)
+3. AI uses DJL + ResNet18 for perceptual similarity (~45MB model, embedded in library)
 
 | Diff Range | Strategy | Description |
 |------------|----------|-------------|
@@ -532,30 +532,32 @@ if (result.isMatch()) {
 3. Threshold determines match/mismatch
 
 **Model details:**
-- Size: ~45MB (auto-downloaded on first use)
+- Size: ~45MB (embedded in library JAR)
 - Training: ImageNet (14 million images)
-- Storage: Cached in `~/.djl.ai/cache/`
+- Location: `src/main/resources/models/resnet18/traced_resnet18.pt`
 
-**Manual model installation (for corporate firewalls):**
+**Model loading priority:**
+1. Embedded model from classpath (bundled with library) - **default, works offline**
+2. Local model path (if `bnc.visual.ai.model.path` is set)
+3. Direct URL download (if `bnc.visual.ai.model.url` is set)
+4. DJL model zoo (requires internet access)
 
-If the auto-download fails due to firewall restrictions, you can install the model manually:
+**Override with custom model (optional):**
 
-1. Download the model from: `https://djl-ai.s3.amazonaws.com/mlrepo/model/cv/image_classification/ai/djl/pytorch/resnet/0.0.1/traced_resnet18.pt.gz`
-2. Extract to a local directory (e.g., `C:/models/resnet18/`)
-3. Set the system property to point to the model:
-   ```bash
-   # Via Maven
-   mvn test -Dbnc.visual.ai.model.path=C:/models/resnet18
+To use a different model version, set the system property:
+```bash
+# Via Maven
+mvn test -Dbnc.visual.ai.model.path=C:/models/resnet18
 
-   # Or in debug_config.json
-   # Add: "bnc.visual.ai.model.path": "C:/models/resnet18"
-   ```
+# Or in debug_config.json
+# Add: "bnc.visual.ai.model.path": "C:/models/resnet18"
+```
 
 **AI configuration properties:**
 | Property | Description |
 |----------|-------------|
-| `bnc.visual.ai.model.path` | Local path to pre-downloaded ResNet18 model |
-| `bnc.visual.ai.model.url` | Direct URL to download model (alternative to model zoo) |
+| `bnc.visual.ai.model.path` | Override: Local path to custom ResNet18 model |
+| `bnc.visual.ai.model.url` | Override: Direct URL to download model |
 | `bnc.visual.ai.enabled` | Enable/disable AI fallback (default: true) |
 
 ## Test Reports

@@ -177,6 +177,11 @@ public class AIImageComparator implements AutoCloseable {
             initError = e.getMessage();
             log.error("Failed to initialize AI image comparator: {}", e.getMessage());
             log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
+        } catch (Exception e) {
+            // Catch any other exceptions (TranslateException, NoClassDefFoundError, etc.)
+            initError = e.getClass().getName() + ": " + e.getMessage();
+            log.error("Failed to initialize AI image comparator: {}", initError);
+            log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
         }
     }
 
@@ -186,11 +191,13 @@ public class AIImageComparator implements AutoCloseable {
      */
     private Path extractEmbeddedModel() {
         try {
+            log.debug("Looking for embedded model at: {}", EMBEDDED_MODEL_RESOURCE);
             URL resourceUrl = getClass().getResource(EMBEDDED_MODEL_RESOURCE);
             if (resourceUrl == null) {
-                log.debug("Embedded model not found in classpath: {}", EMBEDDED_MODEL_RESOURCE);
+                log.warn("Embedded model not found in classpath: {}", EMBEDDED_MODEL_RESOURCE);
                 return null;
             }
+            log.debug("Found embedded model at URL: {}", resourceUrl);
 
             // Create temp directory for extracted model
             Path tempDir = Files.createTempDirectory("resnet18-model");
