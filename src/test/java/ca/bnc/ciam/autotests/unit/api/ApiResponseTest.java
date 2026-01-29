@@ -1,15 +1,14 @@
 package ca.bnc.ciam.autotests.unit.api;
 
 import ca.bnc.ciam.autotests.api.ApiResponse;
+import ca.bnc.ciam.autotests.api.HttpStatus;
 import io.restassured.response.Response;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -25,6 +24,14 @@ public class ApiResponseTest {
     @BeforeMethod
     public void setUp() {
         mockResponse = Mockito.mock(Response.class);
+
+        // Setup default mock for body (required by ApiResponse constructor)
+        io.restassured.response.ResponseBody mockBody = Mockito.mock(io.restassured.response.ResponseBody.class);
+        when(mockResponse.getBody()).thenReturn(mockBody);
+        when(mockBody.asString()).thenReturn("{}");
+
+        // Setup default mock for time (required by ApiResponse constructor)
+        when(mockResponse.getTime()).thenReturn(0L);
     }
 
     @Test
@@ -37,27 +44,27 @@ public class ApiResponseTest {
     }
 
     @Test
-    public void testIsSuccessful_2xxCodes() {
+    public void testIsSuccess_2xxCodes() {
         when(mockResponse.getStatusCode()).thenReturn(200);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isTrue();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isTrue();
 
         when(mockResponse.getStatusCode()).thenReturn(201);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isTrue();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isTrue();
 
         when(mockResponse.getStatusCode()).thenReturn(204);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isTrue();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isTrue();
     }
 
     @Test
-    public void testIsSuccessful_NonSuccessCodes() {
+    public void testIsSuccess_NonSuccessCodes() {
         when(mockResponse.getStatusCode()).thenReturn(400);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isFalse();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isFalse();
 
         when(mockResponse.getStatusCode()).thenReturn(404);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isFalse();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isFalse();
 
         when(mockResponse.getStatusCode()).thenReturn(500);
-        assertThat(new ApiResponse(mockResponse).isSuccessful()).isFalse();
+        assertThat(new ApiResponse(mockResponse).isSuccess()).isFalse();
     }
 
     @Test
@@ -91,41 +98,34 @@ public class ApiResponseTest {
     }
 
     @Test
-    public void testGetTime() {
+    public void testGetResponseTime() {
         when(mockResponse.getTime()).thenReturn(150L);
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.getTime()).isEqualTo(150L);
+        assertThat(response.getResponseTime()).isEqualTo(150L);
     }
 
     @Test
-    public void testJsonPath() {
+    public void testJsonPathString() {
         io.restassured.path.json.JsonPath jsonPath = Mockito.mock(io.restassured.path.json.JsonPath.class);
         when(mockResponse.jsonPath()).thenReturn(jsonPath);
         when(jsonPath.getString("name")).thenReturn("testValue");
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.jsonPath().getString("name")).isEqualTo("testValue");
+        assertThat(response.jsonPathString("name")).isEqualTo("testValue");
     }
 
     @Test
-    public void testStatusLine() {
-        when(mockResponse.getStatusLine()).thenReturn("HTTP/1.1 200 OK");
+    public void testJsonPathInt() {
+        io.restassured.path.json.JsonPath jsonPath = Mockito.mock(io.restassured.path.json.JsonPath.class);
+        when(mockResponse.jsonPath()).thenReturn(jsonPath);
+        when(jsonPath.getInt("count")).thenReturn(42);
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.getStatusLine()).isEqualTo("HTTP/1.1 200 OK");
-    }
-
-    @Test
-    public void testContentType() {
-        when(mockResponse.getContentType()).thenReturn("application/json; charset=utf-8");
-
-        ApiResponse response = new ApiResponse(mockResponse);
-
-        assertThat(response.getContentType()).isEqualTo("application/json; charset=utf-8");
+        assertThat(response.jsonPathInt("count")).isEqualTo(42);
     }
 
     @Test
@@ -136,68 +136,90 @@ public class ApiResponseTest {
     }
 
     @Test
-    public void testExtract_JsonPath() {
+    public void testJsonPath_ExtractsValue() {
         io.restassured.path.json.JsonPath jsonPath = Mockito.mock(io.restassured.path.json.JsonPath.class);
         when(mockResponse.jsonPath()).thenReturn(jsonPath);
-        when(jsonPath.getString("data.id")).thenReturn("12345");
+        when(jsonPath.get("data.id")).thenReturn("12345");
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.extract("data.id")).isEqualTo("12345");
+        assertThat(response.<String>jsonPath("data.id")).isEqualTo("12345");
     }
 
     @Test
-    public void testExtractList() {
+    public void testJsonPathList() {
         io.restassured.path.json.JsonPath jsonPath = Mockito.mock(io.restassured.path.json.JsonPath.class);
         when(mockResponse.jsonPath()).thenReturn(jsonPath);
         when(jsonPath.getList("data.items")).thenReturn(Arrays.asList("item1", "item2", "item3"));
 
         ApiResponse response = new ApiResponse(mockResponse);
-        List<String> items = response.extractList("data.items");
+        List<String> items = response.jsonPathList("data.items");
 
         assertThat(items).containsExactly("item1", "item2", "item3");
     }
 
     @Test
-    public void testExtractMap() {
-        io.restassured.path.json.JsonPath jsonPath = Mockito.mock(io.restassured.path.json.JsonPath.class);
-        Map<String, Object> data = new HashMap<>();
-        data.put("key1", "value1");
-        data.put("key2", "value2");
-        when(mockResponse.jsonPath()).thenReturn(jsonPath);
-        when(jsonPath.getMap("data")).thenReturn(data);
-
-        ApiResponse response = new ApiResponse(mockResponse);
-        Map<String, Object> extracted = response.extractMap("data");
-
-        assertThat(extracted).containsEntry("key1", "value1");
-        assertThat(extracted).containsEntry("key2", "value2");
-    }
-
-    @Test
-    public void testIs2xx() {
+    public void testIsSuccess() {
         when(mockResponse.getStatusCode()).thenReturn(201);
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.is2xx()).isTrue();
+        assertThat(response.isSuccess()).isTrue();
     }
 
     @Test
-    public void testIs4xx() {
+    public void testIsClientError() {
         when(mockResponse.getStatusCode()).thenReturn(404);
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.is4xx()).isTrue();
+        assertThat(response.isClientError()).isTrue();
     }
 
     @Test
-    public void testIs5xx() {
+    public void testIsServerError() {
         when(mockResponse.getStatusCode()).thenReturn(503);
 
         ApiResponse response = new ApiResponse(mockResponse);
 
-        assertThat(response.is5xx()).isTrue();
+        assertThat(response.isServerError()).isTrue();
+    }
+
+    @Test
+    public void testGetStatus() {
+        when(mockResponse.getStatusCode()).thenReturn(200);
+
+        ApiResponse response = new ApiResponse(mockResponse);
+
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    public void testAssertStatus_MatchingStatus() {
+        when(mockResponse.getStatusCode()).thenReturn(200);
+
+        ApiResponse response = new ApiResponse(mockResponse);
+
+        // Should not throw
+        response.assertStatus(200);
+    }
+
+    @Test
+    public void testAssertSuccess_WithSuccessCode() {
+        when(mockResponse.getStatusCode()).thenReturn(200);
+
+        ApiResponse response = new ApiResponse(mockResponse);
+
+        // Should not throw
+        response.assertSuccess();
+    }
+
+    @Test
+    public void testGetCookie() {
+        when(mockResponse.getCookie("session")).thenReturn("abc123");
+
+        ApiResponse response = new ApiResponse(mockResponse);
+
+        assertThat(response.getCookie("session")).isEqualTo("abc123");
     }
 }

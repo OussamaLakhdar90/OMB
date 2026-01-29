@@ -588,4 +588,42 @@ public class BaseEnvironment extends AbstractDataDrivenTest {
     public static String getDataManagerPath() {
         return absolutePathToDataManager;
     }
+
+    /**
+     * Get the current GUI language.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>Pipeline: System property {@code bnc.web.gui.lang} (from context.json)</li>
+     *   <li>Local: System property {@code bnc.web.gui.lang} (from debug_config.json via "lang" field)</li>
+     *   <li>Default: "en"</li>
+     * </ol>
+     *
+     * @return The current GUI language code (e.g., "en", "fr")
+     */
+    public static String getCurrentGuiLang() {
+        String lang = System.getProperty("bnc.web.gui.lang");
+        if (lang != null && !lang.isEmpty()) {
+            return lang;
+        }
+        return "en";
+    }
+
+    /**
+     * Check if the current GUI language is French.
+     *
+     * @return true if language is French
+     */
+    public static boolean isGuiLangFrench() {
+        return "fr".equalsIgnoreCase(getCurrentGuiLang());
+    }
+
+    /**
+     * Check if the current GUI language is English.
+     *
+     * @return true if language is English
+     */
+    public static boolean isGuiLangEnglish() {
+        return "en".equalsIgnoreCase(getCurrentGuiLang());
+    }
 }

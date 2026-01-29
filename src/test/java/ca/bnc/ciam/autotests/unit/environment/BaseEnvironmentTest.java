@@ -431,4 +431,197 @@ public class BaseEnvironmentTest {
             }
         }
     }
+
+    // ===========================================
+    // getCurrentGuiLang Tests
+    // ===========================================
+
+    @Test
+    public void testGetCurrentGuiLang_ReturnsDefault() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.clearProperty("bnc.web.gui.lang");
+
+            String result = BaseEnvironment.getCurrentGuiLang();
+
+            assertThat(result).isEqualTo("en");
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            }
+        }
+    }
+
+    @Test
+    public void testGetCurrentGuiLang_ReturnsFrench() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "fr");
+
+            String result = BaseEnvironment.getCurrentGuiLang();
+
+            assertThat(result).isEqualTo("fr");
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testGetCurrentGuiLang_ReturnsEnglish() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "en");
+
+            String result = BaseEnvironment.getCurrentGuiLang();
+
+            assertThat(result).isEqualTo("en");
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testGetCurrentGuiLang_EmptyProperty_ReturnsDefault() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "");
+
+            String result = BaseEnvironment.getCurrentGuiLang();
+
+            assertThat(result).isEqualTo("en");
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    // ===========================================
+    // isGuiLangFrench Tests
+    // ===========================================
+
+    @Test
+    public void testIsGuiLangFrench_WhenFrench() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "fr");
+
+            assertThat(BaseEnvironment.isGuiLangFrench()).isTrue();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testIsGuiLangFrench_CaseInsensitive() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "FR");
+
+            assertThat(BaseEnvironment.isGuiLangFrench()).isTrue();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testIsGuiLangFrench_WhenEnglish() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "en");
+
+            assertThat(BaseEnvironment.isGuiLangFrench()).isFalse();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    // ===========================================
+    // isGuiLangEnglish Tests
+    // ===========================================
+
+    @Test
+    public void testIsGuiLangEnglish_WhenEnglish() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "en");
+
+            assertThat(BaseEnvironment.isGuiLangEnglish()).isTrue();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testIsGuiLangEnglish_CaseInsensitive() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "EN");
+
+            assertThat(BaseEnvironment.isGuiLangEnglish()).isTrue();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testIsGuiLangEnglish_WhenFrench() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.setProperty("bnc.web.gui.lang", "fr");
+
+            assertThat(BaseEnvironment.isGuiLangEnglish()).isFalse();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            } else {
+                System.clearProperty("bnc.web.gui.lang");
+            }
+        }
+    }
+
+    @Test
+    public void testIsGuiLangEnglish_WhenDefault() {
+        String originalLang = System.getProperty("bnc.web.gui.lang");
+        try {
+            System.clearProperty("bnc.web.gui.lang");
+
+            // Default is "en"
+            assertThat(BaseEnvironment.isGuiLangEnglish()).isTrue();
+        } finally {
+            if (originalLang != null) {
+                System.setProperty("bnc.web.gui.lang", originalLang);
+            }
+        }
+    }
 }

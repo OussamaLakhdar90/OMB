@@ -63,12 +63,10 @@ public final class Validate {
          */
         public static void areEqual(String expected, String actual, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating: {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .isEqualTo(expected);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                     if (failOnError) {
@@ -83,12 +81,10 @@ public final class Validate {
          */
         public static void areEqualIgnoreCase(String expected, String actual, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating (ignore case): {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .isEqualToIgnoringCase(expected);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                     if (failOnError) {
@@ -103,12 +99,10 @@ public final class Validate {
          */
         public static void contains(String actual, String substring, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating contains: {} - Actual: [{}], Should contain: [{}]", verificationContext, actual, substring);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .contains(substring);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - [{}] does not contain [{}]", verificationContext, actual, substring);
                     if (failOnError) {
@@ -123,12 +117,10 @@ public final class Validate {
          */
         public static void isNotEmpty(String actual, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating not empty: {} - Actual: [{}]", verificationContext, actual);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .isNotEmpty();
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - String is empty", verificationContext);
                     if (failOnError) {
@@ -143,12 +135,10 @@ public final class Validate {
          */
         public static void matchesPattern(String actual, String pattern, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating pattern: {} - Actual: [{}], Pattern: [{}]", verificationContext, actual, pattern);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .matches(pattern);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - [{}] does not match pattern [{}]", verificationContext, actual, pattern);
                     if (failOnError) {
@@ -172,12 +162,10 @@ public final class Validate {
          */
         public static void isNotNull(Object object, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating not null: {}", verificationContext);
                 try {
                     assertThat(object)
                             .as(verificationContext)
                             .isNotNull();
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Object is null", verificationContext);
                     if (failOnError) {
@@ -192,12 +180,10 @@ public final class Validate {
          */
         public static void isNull(Object object, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating is null: {}", verificationContext);
                 try {
                     assertThat(object)
                             .as(verificationContext)
                             .isNull();
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Object is not null: {}", verificationContext, object);
                     if (failOnError) {
@@ -212,12 +198,10 @@ public final class Validate {
          */
         public static void areEqual(Object expected, Object actual, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating equal: {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                 try {
                     assertThat(actual)
                             .as(verificationContext)
                             .isEqualTo(expected);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expected, actual);
                     if (failOnError) {
@@ -238,7 +222,6 @@ public final class Validate {
          */
         public static boolean exists(WebElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element exists: {}", verificationContext);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -249,7 +232,6 @@ public final class Validate {
                     }
                     boolean displayed = element.isDisplayed();
                     if (displayed) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Element is not displayed", verificationContext);
@@ -279,7 +261,6 @@ public final class Validate {
          */
         public static boolean exists(IElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement exists: {}", verificationContext);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -290,7 +271,6 @@ public final class Validate {
                     }
                     boolean displayed = element.isDisplayed();
                     if (displayed) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - IElement is not displayed", verificationContext);
@@ -322,15 +302,12 @@ public final class Validate {
          */
         public static boolean notExists(WebElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element not exists: {}", verificationContext);
                 try {
                     if (element == null) {
-                        log.info("PASS: {} - Element is null", verificationContext);
                         return true;
                     }
                     boolean displayed = element.isDisplayed();
                     if (!displayed) {
-                        log.info("PASS: {} - Element is not displayed", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Element exists and is displayed", verificationContext);
@@ -343,7 +320,6 @@ public final class Validate {
                     throw e;
                 } catch (Exception e) {
                     // Element not found or stale - that's a pass for notExists
-                    log.info("PASS: {} - Element not accessible: {}", verificationContext, e.getMessage());
                     return true;
                 }
             }
@@ -358,15 +334,12 @@ public final class Validate {
          */
         public static boolean notExists(IElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement not exists: {}", verificationContext);
                 try {
                     if (element == null || element.isNull()) {
-                        log.info("PASS: {} - IElement is null", verificationContext);
                         return true;
                     }
                     boolean displayed = element.isDisplayed();
                     if (!displayed) {
-                        log.info("PASS: {} - IElement is not displayed", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - IElement exists and is displayed", verificationContext);
@@ -378,7 +351,7 @@ public final class Validate {
                 } catch (AssertionError e) {
                     throw e;
                 } catch (Exception e) {
-                    log.info("PASS: {} - IElement not accessible: {}", verificationContext, e.getMessage());
+                    // Element not found or stale - that's a pass for notExists
                     return true;
                 }
             }
@@ -395,7 +368,6 @@ public final class Validate {
          */
         public static boolean isEnabled(WebElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element is enabled: {}", verificationContext);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -406,7 +378,6 @@ public final class Validate {
                     }
                     boolean enabled = element.isEnabled();
                     if (enabled) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Element is not enabled", verificationContext);
@@ -436,7 +407,6 @@ public final class Validate {
          */
         public static boolean isEnabled(IElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement is enabled: {}", verificationContext);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -447,7 +417,6 @@ public final class Validate {
                     }
                     boolean enabled = element.isEnabled();
                     if (enabled) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - IElement is not enabled", verificationContext);
@@ -479,7 +448,6 @@ public final class Validate {
          */
         public static boolean isDisabled(WebElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element is disabled: {}", verificationContext);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -490,7 +458,6 @@ public final class Validate {
                     }
                     boolean enabled = element.isEnabled();
                     if (!enabled) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Element is enabled", verificationContext);
@@ -520,7 +487,6 @@ public final class Validate {
          */
         public static boolean isDisabled(IElement element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement is disabled: {}", verificationContext);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -531,7 +497,6 @@ public final class Validate {
                     }
                     boolean enabled = element.isEnabled();
                     if (!enabled) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - IElement is enabled", verificationContext);
@@ -564,7 +529,6 @@ public final class Validate {
          */
         public static boolean hasText(WebElement element, String expectedText, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element has text: {} - Expected: [{}]", verificationContext, expectedText);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -575,7 +539,6 @@ public final class Validate {
                     }
                     String actualText = element.getText();
                     if (expectedText.equals(actualText)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expectedText, actualText);
@@ -606,7 +569,6 @@ public final class Validate {
          */
         public static boolean hasText(IElement element, String expectedText, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement has text: {} - Expected: [{}]", verificationContext, expectedText);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -617,7 +579,6 @@ public final class Validate {
                     }
                     String actualText = element.getText();
                     if (expectedText.equals(actualText)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Expected: [{}], Actual: [{}]", verificationContext, expectedText, actualText);
@@ -650,7 +611,6 @@ public final class Validate {
          */
         public static boolean containsText(WebElement element, String substring, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element contains text: {} - Substring: [{}]", verificationContext, substring);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -661,7 +621,6 @@ public final class Validate {
                     }
                     String actualText = element.getText();
                     if (actualText != null && actualText.contains(substring)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Text [{}] does not contain [{}]", verificationContext, actualText, substring);
@@ -692,7 +651,6 @@ public final class Validate {
          */
         public static boolean containsText(IElement element, String substring, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement contains text: {} - Substring: [{}]", verificationContext, substring);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -703,7 +661,6 @@ public final class Validate {
                     }
                     String actualText = element.getText();
                     if (actualText != null && actualText.contains(substring)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Text [{}] does not contain [{}]", verificationContext, actualText, substring);
@@ -737,7 +694,6 @@ public final class Validate {
          */
         public static boolean hasAttribute(WebElement element, String attributeName, String expectedValue, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating element has attribute: {} - Attribute: [{}], Expected: [{}]", verificationContext, attributeName, expectedValue);
                 try {
                     if (element == null) {
                         log.error("FAIL: {} - Element is null", verificationContext);
@@ -748,7 +704,6 @@ public final class Validate {
                     }
                     String actualValue = element.getAttribute(attributeName);
                     if (expectedValue.equals(actualValue)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Attribute [{}]: Expected: [{}], Actual: [{}]", verificationContext, attributeName, expectedValue, actualValue);
@@ -780,7 +735,6 @@ public final class Validate {
          */
         public static boolean hasAttribute(IElement element, String attributeName, String expectedValue, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating IElement has attribute: {} - Attribute: [{}], Expected: [{}]", verificationContext, attributeName, expectedValue);
                 try {
                     if (element == null || element.isNull()) {
                         log.error("FAIL: {} - IElement is null", verificationContext);
@@ -791,7 +745,6 @@ public final class Validate {
                     }
                     String actualValue = element.getAttribute(attributeName);
                     if (expectedValue.equals(actualValue)) {
-                        log.info("PASS: {}", verificationContext);
                         return true;
                     } else {
                         log.error("FAIL: {} - Attribute [{}]: Expected: [{}], Actual: [{}]", verificationContext, attributeName, expectedValue, actualValue);
@@ -844,15 +797,12 @@ public final class Validate {
          */
         public static void existsWaitSeconds(WebElement element, int waitSeconds, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Waiting for element to exist: {} (timeout: {}s)", verificationContext, waitSeconds);
                 long startTime = System.currentTimeMillis();
                 long timeoutMillis = waitSeconds * 1000L;
 
                 while (System.currentTimeMillis() - startTime < timeoutMillis) {
                     try {
                         if (element != null && element.isDisplayed()) {
-                            log.info("PASS: {} - Element displayed after {}ms",
-                                    verificationContext, System.currentTimeMillis() - startTime);
                             return;
                         }
                     } catch (Exception e) {
@@ -881,15 +831,12 @@ public final class Validate {
          */
         public static void existsWaitSeconds(IElement element, int waitSeconds, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Waiting for IElement to exist: {} (timeout: {}s)", verificationContext, waitSeconds);
                 long startTime = System.currentTimeMillis();
                 long timeoutMillis = waitSeconds * 1000L;
 
                 while (System.currentTimeMillis() - startTime < timeoutMillis) {
                     try {
                         if (element != null && !element.isNull() && element.isDisplayed()) {
-                            log.info("PASS: {} - IElement displayed after {}ms",
-                                    verificationContext, System.currentTimeMillis() - startTime);
                             return;
                         }
                     } catch (Exception e) {
@@ -949,21 +896,16 @@ public final class Validate {
          */
         public static boolean doesNotExistWaitSeconds(WebElement element, int waitSeconds, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Waiting for element to disappear: {} (timeout: {}s)", verificationContext, waitSeconds);
                 long startTime = System.currentTimeMillis();
                 long timeoutMillis = waitSeconds * 1000L;
 
                 while (System.currentTimeMillis() - startTime < timeoutMillis) {
                     try {
                         if (element == null || !element.isDisplayed()) {
-                            log.info("PASS: {} - Element disappeared after {}ms",
-                                    verificationContext, System.currentTimeMillis() - startTime);
                             return true;
                         }
                     } catch (Exception e) {
                         // Element no longer in DOM or stale - this is a pass
-                        log.info("PASS: {} - Element no longer accessible after {}ms: {}",
-                                verificationContext, System.currentTimeMillis() - startTime, e.getMessage());
                         return true;
                     }
 
@@ -996,21 +938,16 @@ public final class Validate {
          */
         public static boolean doesNotExistWaitSeconds(IElement element, int waitSeconds, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Waiting for IElement to disappear: {} (timeout: {}s)", verificationContext, waitSeconds);
                 long startTime = System.currentTimeMillis();
                 long timeoutMillis = waitSeconds * 1000L;
 
                 while (System.currentTimeMillis() - startTime < timeoutMillis) {
                     try {
                         if (element == null || element.isNull() || !element.isDisplayed()) {
-                            log.info("PASS: {} - IElement disappeared after {}ms",
-                                    verificationContext, System.currentTimeMillis() - startTime);
                             return true;
                         }
                     } catch (Exception e) {
                         // Element no longer in DOM or stale - this is a pass
-                        log.info("PASS: {} - IElement no longer accessible after {}ms: {}",
-                                verificationContext, System.currentTimeMillis() - startTime, e.getMessage());
                         return true;
                     }
 
@@ -1046,12 +983,10 @@ public final class Validate {
          */
         public static void isTrue(boolean condition, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating is true: {}", verificationContext);
                 try {
                     assertThat(condition)
                             .as(verificationContext)
                             .isTrue();
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Condition is false", verificationContext);
                     if (failOnError) {
@@ -1066,12 +1001,10 @@ public final class Validate {
          */
         public static void isFalse(boolean condition, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating is false: {}", verificationContext);
                 try {
                     assertThat(condition)
                             .as(verificationContext)
                             .isFalse();
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Condition is true", verificationContext);
                     if (failOnError) {
@@ -1095,12 +1028,10 @@ public final class Validate {
          */
         public static void isNotEmpty(Collection<?> collection, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating collection not empty: {}", verificationContext);
                 try {
                     assertThat(collection)
                             .as(verificationContext)
                             .isNotEmpty();
-                    log.info("PASS: {} - Size: {}", verificationContext, collection.size());
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Collection is empty", verificationContext);
                     if (failOnError) {
@@ -1115,13 +1046,10 @@ public final class Validate {
          */
         public static void hasSize(Collection<?> collection, int expectedSize, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating collection size: {} - Expected: {}, Actual: {}",
-                        verificationContext, expectedSize, collection != null ? collection.size() : "null");
                 try {
                     assertThat(collection)
                             .as(verificationContext)
                             .hasSize(expectedSize);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Expected size: {}, Actual size: {}",
                             verificationContext, expectedSize, collection != null ? collection.size() : "null");
@@ -1137,12 +1065,10 @@ public final class Validate {
          */
         public static <T> void contains(Collection<T> collection, T element, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating collection contains: {} - Element: {}", verificationContext, element);
                 try {
                     assertThat(collection)
                             .as(verificationContext)
                             .contains(element);
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - Collection does not contain: {}", verificationContext, element);
                     if (failOnError) {
@@ -1166,12 +1092,10 @@ public final class Validate {
          */
         public static void isGreaterThan(Number actual, Number expected, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating greater than: {} - Actual: {}, Expected: >{}", verificationContext, actual, expected);
                 try {
                     assertThat(actual.doubleValue())
                             .as(verificationContext)
                             .isGreaterThan(expected.doubleValue());
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - {} is not greater than {}", verificationContext, actual, expected);
                     if (failOnError) {
@@ -1186,12 +1110,10 @@ public final class Validate {
          */
         public static void isLessThan(Number actual, Number expected, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating less than: {} - Actual: {}, Expected: <{}", verificationContext, actual, expected);
                 try {
                     assertThat(actual.doubleValue())
                             .as(verificationContext)
                             .isLessThan(expected.doubleValue());
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - {} is not less than {}", verificationContext, actual, expected);
                     if (failOnError) {
@@ -1206,12 +1128,10 @@ public final class Validate {
          */
         public static void isBetween(Number actual, Number low, Number high, String verificationContext) {
             synchronized (SYNC_LOCK) {
-                log.info("Validating between: {} - Actual: {}, Range: [{}, {}]", verificationContext, actual, low, high);
                 try {
                     assertThat(actual.doubleValue())
                             .as(verificationContext)
                             .isBetween(low.doubleValue(), high.doubleValue());
-                    log.info("PASS: {}", verificationContext);
                 } catch (AssertionError e) {
                     log.error("FAIL: {} - {} is not between {} and {}", verificationContext, actual, low, high);
                     if (failOnError) {

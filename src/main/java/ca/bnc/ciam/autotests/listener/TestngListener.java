@@ -4,17 +4,21 @@ import ca.bnc.ciam.autotests.annotation.DependentStep;
 import ca.bnc.ciam.autotests.annotation.SkipVisualCheck;
 import ca.bnc.ciam.autotests.annotation.VisualCheckpoint;
 import ca.bnc.ciam.autotests.annotation.Xray;
+import ca.bnc.ciam.autotests.config.ContextConfigLoader;
 import ca.bnc.ciam.autotests.metrics.MetricsCollector;
 import ca.bnc.ciam.autotests.metrics.MetricsReportGenerator;
 import ca.bnc.ciam.autotests.metrics.TestMetrics;
 import lombok.extern.slf4j.Slf4j;
+import org.testng.IAnnotationTransformer;
 import org.testng.IMethodInstance;
 import org.testng.IMethodInterceptor;
 import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.ITestResult;
 import org.testng.SkipException;
+import org.testng.annotations.ITestAnnotation;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -31,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Visual checkpoint handling
  * - Test lifecycle logging
  * - Automatic test report generation (HTML, JSON, CSV)
+ * - Automatic retry of failed tests (configurable via bnc.test.retry.enabled)
+ * - Pipeline context configuration loading (when testEnvironment is set)
  *
  * Dependency checking works automatically:
  * - Tests with @DependentStep are skipped if ANY previous test in the class failed
@@ -40,11 +46,25 @@ import java.util.concurrent.ConcurrentHashMap;
  * Reports are generated automatically at suite completion:
  * - Output: target/metrics/test-report-latest.html (and .json, .csv)
  * - Disable: Set system property bnc.metrics.enabled=false
+ *
+ * Retry configuration:
+ * - bnc.test.retry.enabled=false to disable retry (default: true)
+ * - bnc.test.retry.count=N to set max retry attempts (default: 1)
+ *
+ * Pipeline configuration:
+ * - testEnvironment system property triggers context.json loading
+ * - configKey XML parameter selects browser/language configuration
  */
 @Slf4j
-public class TestngListener implements ITestListener, IMethodInterceptor {
+public class TestngListener implements ITestListener, IMethodInterceptor, IAnnotationTransformer {
 
     private static final String METRICS_ENABLED_PROPERTY = "bnc.metrics.enabled";
+    private static final String RETRY_ENABLED_PROPERTY = "bnc.test.retry.enabled";
+
+    /**
+     * Tracks if context has been loaded for current test suite.
+     */
+    private static final Map<String, Boolean> contextLoadedForTest = new ConcurrentHashMap<>();
 
     /**
      * Tracks failed methods per test class for dependency checking.
@@ -69,6 +89,29 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
     private static boolean isMetricsEnabled() {
         return !"false".equalsIgnoreCase(System.getProperty(METRICS_ENABLED_PROPERTY));
     }
+
+    /**
+     * Check if retry is enabled.
+     */
+    private static boolean isRetryEnabled() {
+        return !"false".equalsIgnoreCase(System.getProperty(RETRY_ENABLED_PROPERTY));
+    }
+
+    // ==================== IAnnotationTransformer ====================
+
+    /**
+     * Apply RetryAnalyzer to all test methods automatically.
+     * This eliminates the need to add @Test(retryAnalyzer=...) on each test.
+     */
+    @Override
+    public void transform(ITestAnnotation annotation, Class testClass,
+                          Constructor testConstructor, Method testMethod) {
+        if (isRetryEnabled() && annotation.getRetryAnalyzerClass() == null) {
+            annotation.setRetryAnalyzer(RetryAnalyzer.class);
+        }
+    }
+
+    // ==================== IMethodInterceptor ====================
 
     /**
      * Intercept and reorder test methods to run in lexicographic order.
@@ -243,6 +286,9 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
         log.info("Total tests: {}", context.getAllTestMethods().length);
         log.info("#".repeat(80));
 
+        // Load context configuration for pipeline execution
+        loadContextConfigIfNeeded(context);
+
         // Reset failure tracking for new suite
         classHasFailure.clear();
 
@@ -251,6 +297,42 @@ public class TestngListener implements ITestListener, IMethodInterceptor {
             MetricsCollector.getInstance().startSuite(context);
             log.info("Metrics collection enabled - reports will be generated at suite completion");
         }
+    }
+
+    /**
+     * Load context configuration from context.json for pipeline execution.
+     * Only loads if testEnvironment system property is set and configKey parameter exists.
+     * This is a no-op for local execution (uses debug_config.json instead).
+     */
+    private void loadContextConfigIfNeeded(ITestContext context) {
+        String testEnvironment = System.getProperty("testEnvironment");
+
+        // Skip if not in pipeline mode (no testEnvironment)
+        if (testEnvironment == null || testEnvironment.isEmpty()) {
+            log.debug("Local execution mode - using debug_config.json");
+            return;
+        }
+
+        // Get configKey from XML test parameter
+        String configKey = context.getCurrentXmlTest().getParameter("configKey");
+        if (configKey == null || configKey.isEmpty()) {
+            log.warn("Pipeline mode but no configKey parameter found in XML for test '{}'",
+                     context.getName());
+            return;
+        }
+
+        // Check if already loaded for this test
+        String testKey = testEnvironment + ":" + configKey;
+        if (contextLoadedForTest.containsKey(testKey)) {
+            log.debug("Context already loaded for {}", testKey);
+            return;
+        }
+
+        // Load configuration
+        log.info("Pipeline mode: loading context for env='{}', configKey='{}'",
+                 testEnvironment, configKey);
+        ContextConfigLoader.getInstance().loadConfig(testEnvironment, configKey);
+        contextLoadedForTest.put(testKey, true);
     }
 
     @Override
