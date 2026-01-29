@@ -188,6 +188,9 @@ public class AIImageComparator implements AutoCloseable {
     /**
      * Extract embedded model from classpath to temp directory.
      * Returns null if embedded model is not available.
+     *
+     * DJL expects the model file name to match the directory name + ".pt" extension.
+     * For example: directory "resnet18" should contain "resnet18.pt"
      */
     private Path extractEmbeddedModel() {
         try {
@@ -200,10 +203,14 @@ public class AIImageComparator implements AutoCloseable {
             log.debug("Found embedded model at URL: {}", resourceUrl);
 
             // Create temp directory for extracted model
-            Path tempDir = Files.createTempDirectory("resnet18-model");
+            // Use fixed name "resnet18" so DJL can find "resnet18.pt" inside it
+            Path tempDir = Files.createTempDirectory("djl-resnet18-");
             tempDir.toFile().deleteOnExit();
 
-            Path modelFile = tempDir.resolve("traced_resnet18.pt");
+            // DJL expects model file name to match directory pattern
+            // Extract directory name and create matching .pt file
+            String dirName = tempDir.getFileName().toString();
+            Path modelFile = tempDir.resolve(dirName + ".pt");
             modelFile.toFile().deleteOnExit();
 
             // Extract model from classpath to temp file
