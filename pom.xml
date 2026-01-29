@@ -36,6 +36,21 @@
         <djl.version>0.27.0</djl.version>
     </properties>
 
+    <!-- Repositories - Maven Central for DJL/PyTorch dependencies -->
+    <repositories>
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo1.maven.org/maven2/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Selenium WebDriver -->
         <dependency>
