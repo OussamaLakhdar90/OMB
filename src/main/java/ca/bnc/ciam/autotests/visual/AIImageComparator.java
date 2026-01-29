@@ -217,10 +217,11 @@ public class AIImageComparator implements AutoCloseable {
             initError = e.getMessage();
             log.error("Failed to initialize AI image comparator: {}", e.getMessage());
             log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
-        } catch (Exception e) {
-            // Catch any other exceptions (TranslateException, NoClassDefFoundError, etc.)
-            initError = e.getClass().getName() + ": " + e.getMessage();
-            log.error("Failed to initialize AI image comparator: {}", initError);
+        } catch (Throwable e) {
+            // Catch any other exceptions AND errors (TranslateException, NoClassDefFoundError, etc.)
+            // NoClassDefFoundError is an Error, not Exception, so we need to catch Throwable
+            initError = e.getClass().getSimpleName() + ": " + e.getMessage();
+            log.error("Failed to initialize AI image comparator: {}", initError, e);
             log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
         }
     }
