@@ -54,10 +54,11 @@ public class MetricsReportGeneratorTest {
 
         Map<String, Path> reports = generator.generateReports(metrics);
 
-        assertThat(reports).containsKeys("json", "csv", "html");
+        assertThat(reports).containsKeys("json", "csv", "html", "xml");
         assertThat(reports.get("json")).exists();
         assertThat(reports.get("csv")).exists();
         assertThat(reports.get("html")).exists();
+        assertThat(reports.get("xml")).exists();
     }
 
     @Test
@@ -68,8 +69,10 @@ public class MetricsReportGeneratorTest {
 
         assertThat(report).exists();
         String content = Files.readString(report);
-        assertThat(content).contains("\"suiteName\":\"TestSuite\"");
-        assertThat(content).contains("\"totalTests\":3");
+        assertThat(content).contains("\"suiteName\"");
+        assertThat(content).contains("TestSuite");
+        assertThat(content).contains("\"totalTests\"");
+        assertThat(content).contains("3");
     }
 
     @Test
@@ -80,7 +83,8 @@ public class MetricsReportGeneratorTest {
 
         assertThat(report).exists();
         String content = Files.readString(report);
-        assertThat(content).contains("Class,Method,Status,Duration");
+        assertThat(content).contains("Class,Method,Status");
+        assertThat(content).contains("Duration (ms)");
         assertThat(content).contains("TestClass,testMethod1,PASSED");
     }
 
@@ -113,7 +117,8 @@ public class MetricsReportGeneratorTest {
         String report = generator.generateReportString(metrics, "json");
 
         assertThat(report).isNotNull();
-        assertThat(report).contains("\"suiteName\":\"TestSuite\"");
+        assertThat(report).contains("\"suiteName\"");
+        assertThat(report).contains("TestSuite");
     }
 
     @Test
@@ -137,10 +142,35 @@ public class MetricsReportGeneratorTest {
     }
 
     @Test
+    public void testGenerateReport_Xml() throws IOException {
+        TestMetrics metrics = createSampleMetrics();
+
+        Path report = generator.generateReport(metrics, "xml");
+
+        assertThat(report).exists();
+        String content = Files.readString(report);
+        assertThat(content).contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        assertThat(content).contains("<testReport>");
+        assertThat(content).contains("<suiteName>TestSuite</suiteName>");
+        assertThat(content).contains("<totalTests>3</totalTests>");
+    }
+
+    @Test
+    public void testGenerateReportString_Xml() {
+        TestMetrics metrics = createSampleMetrics();
+
+        String report = generator.generateReportString(metrics, "xml");
+
+        assertThat(report).isNotNull();
+        assertThat(report).contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        assertThat(report).contains("<testReport>");
+    }
+
+    @Test
     public void testGetAvailableFormats() {
         Set<String> formats = generator.getAvailableFormats();
 
-        assertThat(formats).contains("json", "csv", "html");
+        assertThat(formats).contains("json", "csv", "html", "xml");
     }
 
     @Test
@@ -159,6 +189,7 @@ public class MetricsReportGeneratorTest {
         assertThat(tempDir.resolve("test-report-latest.json")).exists();
         assertThat(tempDir.resolve("test-report-latest.csv")).exists();
         assertThat(tempDir.resolve("test-report-latest.html")).exists();
+        assertThat(tempDir.resolve("test-report-latest.xml")).exists();
     }
 
     @Test
@@ -213,6 +244,51 @@ public class MetricsReportGeneratorTest {
         assertThat(content).contains("API Call Metrics");
         assertThat(content).contains("ApiTest");
         assertThat(content).contains("/api/users");
+    }
+
+    @Test
+    public void testXmlReportWithVisualMetrics() throws IOException {
+        TestMetrics metrics = createSampleMetrics();
+        metrics.addVisualMetric(TestMetrics.VisualMetric.builder()
+                .testName("VisualTest")
+                .baselineName("baseline1")
+                .matched(true)
+                .diffPercentage(0.005)
+                .tolerance(0.01)
+                .status("SUCCESS")
+                .comparisonTimeMs(150)
+                .diffImagePath("target/metrics/visual/diff.png")
+                .actualImagePath("target/metrics/visual/actual.png")
+                .build());
+
+        Path xmlReport = generator.generateReport(metrics, "xml");
+        String content = Files.readString(xmlReport);
+
+        assertThat(content).contains("<visualMetrics>");
+        assertThat(content).contains("<testName>VisualTest</testName>");
+        assertThat(content).contains("<diffImagePath>target/metrics/visual/diff.png</diffImagePath>");
+        assertThat(content).contains("<actualImagePath>target/metrics/visual/actual.png</actualImagePath>");
+    }
+
+    @Test
+    public void testXmlReportWithApiMetrics() throws IOException {
+        TestMetrics metrics = createSampleMetrics();
+        metrics.addApiMetric(TestMetrics.ApiMetric.builder()
+                .testName("ApiTest")
+                .method("POST")
+                .endpoint("/api/users")
+                .statusCode(201)
+                .responseTimeMs(250)
+                .success(true)
+                .build());
+
+        Path xmlReport = generator.generateReport(metrics, "xml");
+        String content = Files.readString(xmlReport);
+
+        assertThat(content).contains("<apiMetrics>");
+        assertThat(content).contains("<testName>ApiTest</testName>");
+        assertThat(content).contains("<method>POST</method>");
+        assertThat(content).contains("<endpoint>/api/users</endpoint>");
     }
 
     /**

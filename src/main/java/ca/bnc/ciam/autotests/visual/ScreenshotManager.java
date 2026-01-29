@@ -95,7 +95,42 @@ public class ScreenshotManager {
         if (originalSize.getWidth() != DEFAULT_WIDTH || originalSize.getHeight() != DEFAULT_HEIGHT) {
             log.info("Setting window size to {}x{} (was {}x{})",
                     DEFAULT_WIDTH, DEFAULT_HEIGHT, originalSize.getWidth(), originalSize.getHeight());
-            driver.manage().window().setSize(new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+
+            try {
+                // First, try to restore window from maximized state
+                // This prevents "failed to change window state to 'normal'" error
+                try {
+                    // Use JavaScript to check if window appears maximized
+                    JavascriptExecutor js = (JavascriptExecutor) driver;
+                    Boolean isMaximized = (Boolean) js.executeScript(
+                        "return window.outerWidth >= screen.availWidth && window.outerHeight >= screen.availHeight;");
+
+                    if (Boolean.TRUE.equals(isMaximized)) {
+                        log.debug("Window appears maximized, restoring to normal state first");
+                        // Set a smaller size first to force window out of maximized state
+                        driver.manage().window().setSize(new Dimension(DEFAULT_WIDTH - 1, DEFAULT_HEIGHT - 1));
+                        Thread.sleep(50);
+                    }
+                } catch (Exception e) {
+                    log.debug("Could not check/restore maximized state via JS: {}", e.getMessage());
+                }
+
+                // Now set the target size
+                driver.manage().window().setSize(new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+
+            } catch (Exception e) {
+                // If setSize fails (e.g., window is maximized), try alternative approach
+                log.warn("Failed to resize window directly: {}. Trying alternative approach.", e.getMessage());
+                try {
+                    // Try to set a different size first, then the target size
+                    driver.manage().window().setSize(new Dimension(800, 600));
+                    Thread.sleep(100);
+                    driver.manage().window().setSize(new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+                } catch (Exception e2) {
+                    log.warn("Alternative resize also failed: {}. Proceeding with current window size.", e2.getMessage());
+                    // Continue anyway - visual comparison might still work with different size
+                }
+            }
 
             // Wait for resize to take effect
             try {

@@ -97,7 +97,7 @@ testData.getForKey("email");  // Direct access from current data
 | `visual/` | Screenshot capture (AShot), image comparison (OpenCV), baseline management |
 | `listener/` | TestngListener - ordering, dependency checking, logging |
 | `xray/` | Jira/Xray integration for test reporting |
-| `metrics/` | Test metrics collection and export (HTML, JSON, CSV) |
+| `metrics/` | Test metrics collection and export (HTML, JSON, CSV, XML) |
 
 ### Annotations
 
@@ -515,6 +515,7 @@ Test reports are automatically generated at suite completion in multiple formats
 - `test-report-latest.html` - Human-readable HTML report
 - `test-report-latest.json` - Machine-readable JSON
 - `test-report-latest.csv` - Spreadsheet-compatible CSV
+- `test-report-latest.xml` - XML format for CI/CD integration
 - Timestamped versions are also saved (e.g., `test-report_SuiteName_20240115_143022.html`)
 
 **Report contents:**

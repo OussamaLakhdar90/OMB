@@ -57,7 +57,7 @@ public class CsvMetricsExporter implements MetricsExporter {
             sb.append(escapeCsv(result.getClassName())).append(DELIMITER);
             sb.append(escapeCsv(result.getMethodName())).append(DELIMITER);
             sb.append(result.getStatus()).append(DELIMITER);
-            sb.append(result.getStartTime().format(DATE_FORMAT)).append(DELIMITER);
+            sb.append(result.getStartTime() != null ? result.getStartTime().format(DATE_FORMAT) : "").append(DELIMITER);
             sb.append(result.getEndTime() != null ? result.getEndTime().format(DATE_FORMAT) : "").append(DELIMITER);
             sb.append(result.getDurationMs()).append(DELIMITER);
             sb.append(escapeCsv(result.getErrorMessage()));

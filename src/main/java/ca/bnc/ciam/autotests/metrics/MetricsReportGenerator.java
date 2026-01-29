@@ -4,6 +4,7 @@ import ca.bnc.ciam.autotests.metrics.export.CsvMetricsExporter;
 import ca.bnc.ciam.autotests.metrics.export.HtmlMetricsExporter;
 import ca.bnc.ciam.autotests.metrics.export.JsonMetricsExporter;
 import ca.bnc.ciam.autotests.metrics.export.MetricsExporter;
+import ca.bnc.ciam.autotests.metrics.export.XmlMetricsExporter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -49,6 +50,7 @@ public class MetricsReportGenerator {
         exporters.put("json", new JsonMetricsExporter());
         exporters.put("csv", new CsvMetricsExporter());
         exporters.put("html", new HtmlMetricsExporter());
+        exporters.put("xml", new XmlMetricsExporter());
     }
 
     /**
