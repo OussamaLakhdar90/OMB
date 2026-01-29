@@ -536,6 +536,28 @@ if (result.isMatch()) {
 - Training: ImageNet (14 million images)
 - Storage: Cached in `~/.djl.ai/cache/`
 
+**Manual model installation (for corporate firewalls):**
+
+If the auto-download fails due to firewall restrictions, you can install the model manually:
+
+1. Download the model from: `https://djl-ai.s3.amazonaws.com/mlrepo/model/cv/image_classification/ai/djl/pytorch/resnet/0.0.1/traced_resnet18.pt.gz`
+2. Extract to a local directory (e.g., `C:/models/resnet18/`)
+3. Set the system property to point to the model:
+   ```bash
+   # Via Maven
+   mvn test -Dbnc.visual.ai.model.path=C:/models/resnet18
+
+   # Or in debug_config.json
+   # Add: "bnc.visual.ai.model.path": "C:/models/resnet18"
+   ```
+
+**AI configuration properties:**
+| Property | Description |
+|----------|-------------|
+| `bnc.visual.ai.model.path` | Local path to pre-downloaded ResNet18 model |
+| `bnc.visual.ai.model.url` | Direct URL to download model (alternative to model zoo) |
+| `bnc.visual.ai.enabled` | Enable/disable AI fallback (default: true) |
+
 ## Test Reports
 
 ### Automatic Report Generation

@@ -22,6 +22,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -77,8 +81,22 @@ public class AIImageComparator implements AutoCloseable {
         initialize();
     }
 
+    /** System property for specifying local model path */
+    public static final String MODEL_PATH_PROPERTY = "bnc.visual.ai.model.path";
+
+    /** System property for specifying model URL (direct download) */
+    public static final String MODEL_URL_PROPERTY = "bnc.visual.ai.model.url";
+
+    /** Default DJL model download URL */
+    private static final String DEFAULT_MODEL_URL =
+            "https://djl-ai.s3.amazonaws.com/mlrepo/model/cv/image_classification/ai/djl/pytorch/resnet/0.0.1/traced_resnet18.pt.gz";
+
     /**
      * Initialize the DJL model lazily.
+     * Tries loading in this order:
+     * 1. Local model path (if bnc.visual.ai.model.path is set)
+     * 2. Direct URL download (if bnc.visual.ai.model.url is set)
+     * 3. Standard DJL model zoo (requires internet access)
      */
     private synchronized void initialize() {
         if (initialized) {
@@ -88,14 +106,46 @@ public class AIImageComparator implements AutoCloseable {
         try {
             log.info("Initializing AI image comparator with ResNet18...");
 
-            // Create criteria for ResNet18 model with custom feature extractor translator
-            Criteria<Image, float[]> criteria = Criteria.builder()
-                    .optApplication(Application.CV.IMAGE_CLASSIFICATION)
-                    .setTypes(Image.class, float[].class)
-                    .optArtifactId("resnet")
-                    .optFilter("layers", "18")
-                    .optTranslator(new FeatureExtractionTranslator())
-                    .build();
+            // Check for local model path first
+            String localModelPath = System.getProperty(MODEL_PATH_PROPERTY);
+            String modelUrl = System.getProperty(MODEL_URL_PROPERTY);
+
+            Criteria<Image, float[]> criteria;
+
+            if (localModelPath != null && !localModelPath.isEmpty()) {
+                // Load from local file
+                Path modelPath = Paths.get(localModelPath);
+                if (Files.exists(modelPath)) {
+                    log.info("Loading AI model from local path: {}", localModelPath);
+                    criteria = Criteria.builder()
+                            .optApplication(Application.CV.IMAGE_CLASSIFICATION)
+                            .setTypes(Image.class, float[].class)
+                            .optModelPath(modelPath)
+                            .optTranslator(new FeatureExtractionTranslator())
+                            .build();
+                } else {
+                    throw new IOException("Local model file not found: " + localModelPath);
+                }
+            } else if (modelUrl != null && !modelUrl.isEmpty()) {
+                // Load from direct URL
+                log.info("Loading AI model from URL: {}", modelUrl);
+                criteria = Criteria.builder()
+                        .optApplication(Application.CV.IMAGE_CLASSIFICATION)
+                        .setTypes(Image.class, float[].class)
+                        .optModelUrls(modelUrl)
+                        .optTranslator(new FeatureExtractionTranslator())
+                        .build();
+            } else {
+                // Standard model zoo (requires internet)
+                log.info("Loading AI model from DJL model zoo (requires internet)...");
+                criteria = Criteria.builder()
+                        .optApplication(Application.CV.IMAGE_CLASSIFICATION)
+                        .setTypes(Image.class, float[].class)
+                        .optArtifactId("resnet")
+                        .optFilter("layers", "18")
+                        .optTranslator(new FeatureExtractionTranslator())
+                        .build();
+            }
 
             model = criteria.loadModel();
             predictor = model.newPredictor();
@@ -107,6 +157,14 @@ public class AIImageComparator implements AutoCloseable {
             initError = e.getMessage();
             log.error("Failed to initialize AI image comparator: {}", e.getMessage());
             log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
+            log.warn("");
+            log.warn("=== MANUAL MODEL INSTALLATION ===");
+            log.warn("If behind a firewall, download the model manually:");
+            log.warn("1. Download: {}", DEFAULT_MODEL_URL);
+            log.warn("2. Extract to a local directory");
+            log.warn("3. Set system property: -D{}=/path/to/model", MODEL_PATH_PROPERTY);
+            log.warn("Or specify a direct URL: -D{}=<url>", MODEL_URL_PROPERTY);
+            log.warn("================================");
         }
     }
 
