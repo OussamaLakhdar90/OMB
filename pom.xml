@@ -36,21 +36,6 @@
         <djl.version>0.27.0</djl.version>
     </properties>
 
-    <!-- Repositories - Maven Central for DJL/PyTorch dependencies -->
-    <repositories>
-        <repository>
-            <id>central</id>
-            <name>Maven Central</name>
-            <url>https://repo1.maven.org/maven2/</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
     <dependencies>
         <!-- Selenium WebDriver -->
         <dependency>
@@ -180,10 +165,10 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.version}</version>
         </dependency>
-        <!-- PyTorch native libraries - auto-downloads correct version for OS -->
+        <!-- PyTorch native libraries for CPU -->
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-native-auto</artifactId>
+            <artifactId>pytorch-native-cpu</artifactId>
             <version>2.1.1</version>
             <scope>runtime</scope>
         </dependency>
