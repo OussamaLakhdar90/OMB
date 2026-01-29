@@ -22,9 +22,12 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -91,12 +94,16 @@ public class AIImageComparator implements AutoCloseable {
     private static final String DEFAULT_MODEL_URL =
             "https://djl-ai.s3.amazonaws.com/mlrepo/model/cv/image_classification/ai/djl/pytorch/resnet/0.0.1/traced_resnet18.pt.gz";
 
+    /** Embedded model resource path */
+    private static final String EMBEDDED_MODEL_RESOURCE = "/models/resnet18/traced_resnet18.pt";
+
     /**
      * Initialize the DJL model lazily.
      * Tries loading in this order:
-     * 1. Local model path (if bnc.visual.ai.model.path is set)
-     * 2. Direct URL download (if bnc.visual.ai.model.url is set)
-     * 3. Standard DJL model zoo (requires internet access)
+     * 1. Embedded model from classpath (bundled with library)
+     * 2. Local model path (if bnc.visual.ai.model.path is set)
+     * 3. Direct URL download (if bnc.visual.ai.model.url is set)
+     * 4. Standard DJL model zoo (requires internet access)
      */
     private synchronized void initialize() {
         if (initialized) {
@@ -106,14 +113,25 @@ public class AIImageComparator implements AutoCloseable {
         try {
             log.info("Initializing AI image comparator with ResNet18...");
 
-            // Check for local model path first
+            // Check for local model path override
             String localModelPath = System.getProperty(MODEL_PATH_PROPERTY);
             String modelUrl = System.getProperty(MODEL_URL_PROPERTY);
 
-            Criteria<Image, float[]> criteria;
+            Criteria<Image, float[]> criteria = null;
 
-            if (localModelPath != null && !localModelPath.isEmpty()) {
-                // Load from local file
+            // 1. Try embedded model from classpath first
+            Path embeddedModelPath = extractEmbeddedModel();
+            if (embeddedModelPath != null) {
+                log.info("Loading AI model from embedded resource");
+                criteria = Criteria.builder()
+                        .optApplication(Application.CV.IMAGE_CLASSIFICATION)
+                        .setTypes(Image.class, float[].class)
+                        .optModelPath(embeddedModelPath)
+                        .optTranslator(new FeatureExtractionTranslator())
+                        .build();
+            }
+            // 2. Try local file path
+            else if (localModelPath != null && !localModelPath.isEmpty()) {
                 Path modelPath = Paths.get(localModelPath);
                 if (Files.exists(modelPath)) {
                     log.info("Loading AI model from local path: {}", localModelPath);
@@ -126,8 +144,9 @@ public class AIImageComparator implements AutoCloseable {
                 } else {
                     throw new IOException("Local model file not found: " + localModelPath);
                 }
-            } else if (modelUrl != null && !modelUrl.isEmpty()) {
-                // Load from direct URL
+            }
+            // 3. Try direct URL
+            else if (modelUrl != null && !modelUrl.isEmpty()) {
                 log.info("Loading AI model from URL: {}", modelUrl);
                 criteria = Criteria.builder()
                         .optApplication(Application.CV.IMAGE_CLASSIFICATION)
@@ -135,8 +154,9 @@ public class AIImageComparator implements AutoCloseable {
                         .optModelUrls(modelUrl)
                         .optTranslator(new FeatureExtractionTranslator())
                         .build();
-            } else {
-                // Standard model zoo (requires internet)
+            }
+            // 4. Fall back to model zoo (requires internet)
+            else {
                 log.info("Loading AI model from DJL model zoo (requires internet)...");
                 criteria = Criteria.builder()
                         .optApplication(Application.CV.IMAGE_CLASSIFICATION)
@@ -157,14 +177,42 @@ public class AIImageComparator implements AutoCloseable {
             initError = e.getMessage();
             log.error("Failed to initialize AI image comparator: {}", e.getMessage());
             log.warn("AI comparison will be unavailable. Falling back to pixel-based comparison.");
-            log.warn("");
-            log.warn("=== MANUAL MODEL INSTALLATION ===");
-            log.warn("If behind a firewall, download the model manually:");
-            log.warn("1. Download: {}", DEFAULT_MODEL_URL);
-            log.warn("2. Extract to a local directory");
-            log.warn("3. Set system property: -D{}=/path/to/model", MODEL_PATH_PROPERTY);
-            log.warn("Or specify a direct URL: -D{}=<url>", MODEL_URL_PROPERTY);
-            log.warn("================================");
+        }
+    }
+
+    /**
+     * Extract embedded model from classpath to temp directory.
+     * Returns null if embedded model is not available.
+     */
+    private Path extractEmbeddedModel() {
+        try {
+            URL resourceUrl = getClass().getResource(EMBEDDED_MODEL_RESOURCE);
+            if (resourceUrl == null) {
+                log.debug("Embedded model not found in classpath: {}", EMBEDDED_MODEL_RESOURCE);
+                return null;
+            }
+
+            // Create temp directory for extracted model
+            Path tempDir = Files.createTempDirectory("resnet18-model");
+            tempDir.toFile().deleteOnExit();
+
+            Path modelFile = tempDir.resolve("traced_resnet18.pt");
+            modelFile.toFile().deleteOnExit();
+
+            // Extract model from classpath to temp file
+            try (InputStream is = getClass().getResourceAsStream(EMBEDDED_MODEL_RESOURCE)) {
+                if (is == null) {
+                    return null;
+                }
+                Files.copy(is, modelFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            log.info("Extracted embedded model to: {}", modelFile);
+            return tempDir;
+
+        } catch (IOException e) {
+            log.warn("Failed to extract embedded model: {}", e.getMessage());
+            return null;
         }
     }
 
