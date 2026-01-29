@@ -45,7 +45,7 @@ public class HybridVisualComparator implements AutoCloseable {
     private static final double DEFAULT_AI_THRESHOLD = 0.92;
 
     // Local scaled comparison settings
-    private static final double LOCAL_SCALED_TOLERANCE = 0.08;     // 8% tolerance for local scaled comparisons
+    private static final double LOCAL_SCALED_TOLERANCE = 0.03;     // 3% tolerance for local scaled comparisons
     private static final double LOCAL_SCALED_GRAY_ZONE_UPPER = 0.25; // Wider gray zone for scaled (25%)
 
     private final ImageComparator pixelComparator;
