@@ -16,6 +16,7 @@ import org.opencv.imgproc.Imgproc;
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -90,16 +91,31 @@ public class ImageComparator {
     private ComparisonResult compareWithOpenCV(BufferedImage baseline, BufferedImage actual,
                                                 double tolerance, List<int[]> ignoreRegions) {
         try {
+            boolean wasScaled = false;
+            double scaleFactor = 1.0;
+            int originalActualWidth = actual.getWidth();
+            int originalActualHeight = actual.getHeight();
+
+            // Check if scaling is needed
+            if (baseline.getWidth() != actual.getWidth() || baseline.getHeight() != actual.getHeight()) {
+                wasScaled = true;
+                scaleFactor = (double) baseline.getWidth() / actual.getWidth();
+
+                log.warn("========================================");
+                log.warn("RESOLUTION MISMATCH DETECTED (Local Execution)");
+                log.warn("Baseline: {}x{}, Actual: {}x{}", baseline.getWidth(), baseline.getHeight(),
+                        actual.getWidth(), actual.getHeight());
+                log.warn("Scale factor: {:.2f}x - Actual will be scaled UP to match baseline", scaleFactor);
+                log.warn("NOTE: Comparison may have higher tolerance due to scaling artifacts");
+                log.warn("========================================");
+
+                // Use high-quality Java scaling before converting to OpenCV
+                actual = scaleImageHighQuality(actual, baseline.getWidth(), baseline.getHeight());
+            }
+
             // Convert to OpenCV Mat
             Mat baselineMat = bufferedImageToMat(baseline);
             Mat actualMat = bufferedImageToMat(actual);
-
-            // Resize if dimensions don't match
-            if (baselineMat.rows() != actualMat.rows() || baselineMat.cols() != actualMat.cols()) {
-                log.warn("Image dimensions differ. Baseline: {}x{}, Actual: {}x{}. Resizing actual.",
-                        baselineMat.cols(), baselineMat.rows(), actualMat.cols(), actualMat.rows());
-                Imgproc.resize(actualMat, actualMat, new Size(baselineMat.cols(), baselineMat.rows()));
-            }
 
             // Apply ignore regions (mask)
             if (ignoreRegions != null && !ignoreRegions.isEmpty()) {
@@ -135,10 +151,10 @@ public class ImageComparator {
             // Create diff image highlighting differences
             BufferedImage diffImage = createDiffImage(baseline, actual, matToBufferedImage(thresholded));
 
-            log.info("Image comparison: diff={}%, tolerance={}%, match={}",
+            log.info("Image comparison: diff={}%, tolerance={}%, match={}, scaled={}",
                     String.format("%.4f", diffPercentage * 100),
                     String.format("%.4f", tolerance * 100),
-                    match);
+                    match, wasScaled);
 
             return ComparisonResult.builder()
                     .match(match)
@@ -149,8 +165,10 @@ public class ImageComparator {
                     .diffImage(diffImage)
                     .baselineWidth(baseline.getWidth())
                     .baselineHeight(baseline.getHeight())
-                    .actualWidth(actual.getWidth())
-                    .actualHeight(actual.getHeight())
+                    .actualWidth(originalActualWidth)
+                    .actualHeight(originalActualHeight)
+                    .wasScaled(wasScaled)
+                    .scaleFactor(scaleFactor)
                     .build();
 
         } catch (Exception e) {
@@ -164,8 +182,29 @@ public class ImageComparator {
      */
     private ComparisonResult compareWithJava(BufferedImage baseline, BufferedImage actual,
                                               double tolerance, List<int[]> ignoreRegions) {
-        int width = Math.min(baseline.getWidth(), actual.getWidth());
-        int height = Math.min(baseline.getHeight(), actual.getHeight());
+        boolean wasScaled = false;
+        double scaleFactor = 1.0;
+        int originalActualWidth = actual.getWidth();
+        int originalActualHeight = actual.getHeight();
+
+        // Check if scaling is needed
+        if (baseline.getWidth() != actual.getWidth() || baseline.getHeight() != actual.getHeight()) {
+            wasScaled = true;
+            scaleFactor = (double) baseline.getWidth() / actual.getWidth();
+
+            log.warn("========================================");
+            log.warn("RESOLUTION MISMATCH DETECTED (Local Execution)");
+            log.warn("Baseline: {}x{}, Actual: {}x{}", baseline.getWidth(), baseline.getHeight(),
+                    actual.getWidth(), actual.getHeight());
+            log.warn("Scale factor: {:.2f}x - Actual will be scaled UP to match baseline", scaleFactor);
+            log.warn("========================================");
+
+            // Scale actual to match baseline dimensions using high-quality scaling
+            actual = scaleImageHighQuality(actual, baseline.getWidth(), baseline.getHeight());
+        }
+
+        int width = baseline.getWidth();
+        int height = baseline.getHeight();
 
         int diffPixels = 0;
         int totalPixels = width * height;
@@ -196,10 +235,10 @@ public class ImageComparator {
         double diffPercentage = (double) diffPixels / totalPixels;
         boolean match = diffPercentage <= tolerance;
 
-        log.info("Java image comparison: diff={}%, tolerance={}%, match={}",
+        log.info("Java image comparison: diff={}%, tolerance={}%, match={}, scaled={}",
                 String.format("%.4f", diffPercentage * 100),
                 String.format("%.4f", tolerance * 100),
-                match);
+                match, wasScaled);
 
         return ComparisonResult.builder()
                 .match(match)
@@ -210,8 +249,10 @@ public class ImageComparator {
                 .diffImage(diffImage)
                 .baselineWidth(baseline.getWidth())
                 .baselineHeight(baseline.getHeight())
-                .actualWidth(actual.getWidth())
-                .actualHeight(actual.getHeight())
+                .actualWidth(originalActualWidth)
+                .actualHeight(originalActualHeight)
+                .wasScaled(wasScaled)
+                .scaleFactor(scaleFactor)
                 .build();
     }
 
@@ -401,6 +442,30 @@ public class ImageComparator {
     }
 
     /**
+     * Scale image using high-quality bicubic interpolation.
+     * This produces better results than simple nearest-neighbor or bilinear scaling.
+     *
+     * @param original the original image
+     * @param targetWidth target width
+     * @param targetHeight target height
+     * @return scaled image with high quality
+     */
+    public static BufferedImage scaleImageHighQuality(BufferedImage original, int targetWidth, int targetHeight) {
+        BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = scaled.createGraphics();
+
+        // Use high-quality rendering hints for better scaling
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        g.drawImage(original, 0, 0, targetWidth, targetHeight, null);
+        g.dispose();
+
+        return scaled;
+    }
+
+    /**
      * Comparison result data class.
      */
     @Data
@@ -416,10 +481,17 @@ public class ImageComparator {
         private int baselineHeight;
         private int actualWidth;
         private int actualHeight;
+        /** True if actual image was scaled to match baseline dimensions */
+        @Builder.Default
+        private boolean wasScaled = false;
+        /** Scale factor applied (1.0 = no scaling, >1.0 = upscaled, <1.0 = downscaled) */
+        @Builder.Default
+        private double scaleFactor = 1.0;
 
         public String getSummary() {
-            return String.format("Match: %s, Diff: %.4f%%, Pixels: %d/%d, Tolerance: %.4f%%",
-                    match, diffPercentage * 100, diffPixelCount, totalPixelCount, tolerance * 100);
+            String scalingInfo = wasScaled ? String.format(", Scaled: %.2fx", scaleFactor) : "";
+            return String.format("Match: %s, Diff: %.4f%%, Pixels: %d/%d, Tolerance: %.4f%%%s",
+                    match, diffPercentage * 100, diffPixelCount, totalPixelCount, tolerance * 100, scalingInfo);
         }
     }
 }

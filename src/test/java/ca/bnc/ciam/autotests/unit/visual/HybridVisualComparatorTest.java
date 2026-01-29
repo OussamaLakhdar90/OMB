@@ -232,6 +232,85 @@ public class HybridVisualComparatorTest {
     }
 
     // ===========================================
+    // Scaled Comparison Tests (Local Execution)
+    // ===========================================
+
+    @Test
+    public void testScaledComparison_DetectsScaling() {
+        // Baseline at higher resolution (like SauceLabs)
+        BufferedImage baseline = createTestImage(200, 200, Color.BLUE);
+        // Actual at lower resolution (like local laptop)
+        BufferedImage actual = createTestImage(150, 150, Color.BLUE);
+
+        HybridComparisonResult result = comparatorWithoutAI.compare(baseline, actual, 0.10);
+
+        // Should detect scaling
+        assertThat(result.isWasScaled()).isTrue();
+        assertThat(result.getScaleFactor()).isGreaterThan(1.0);
+    }
+
+    @Test
+    public void testScaledComparison_SolidColorImages_ShouldMatch() {
+        // Same color, different resolution
+        BufferedImage baseline = createTestImage(200, 200, Color.GREEN);
+        BufferedImage actual = createTestImage(150, 150, Color.GREEN);
+
+        // With tolerance that allows for scaling artifacts
+        HybridComparisonResult result = comparatorWithoutAI.compare(baseline, actual, 0.10);
+
+        // Solid colors should match even with scaling
+        assertThat(result.isMatch()).isTrue();
+    }
+
+    @Test
+    public void testScaledComparison_DifferentImages_ShouldDetectDifference() {
+        // Red baseline
+        BufferedImage baseline = createTestImage(200, 200, Color.RED);
+        // Blue actual (completely different)
+        BufferedImage actual = createTestImage(150, 150, Color.BLUE);
+
+        HybridComparisonResult result = comparatorWithoutAI.compare(baseline, actual, 0.01);
+
+        // Should detect the major difference
+        assertThat(result.isMatch()).isFalse();
+        assertThat(result.isWasScaled()).isTrue();
+    }
+
+    @Test
+    public void testScaledComparison_ResultIncludesScaleInfo() {
+        BufferedImage baseline = createTestImage(200, 200, Color.WHITE);
+        BufferedImage actual = createTestImage(150, 150, Color.WHITE);
+
+        HybridComparisonResult result = comparatorWithoutAI.compare(baseline, actual, 0.10);
+
+        // Result should include scaling info
+        assertThat(result.isWasScaled()).isTrue();
+        assertThat(result.getScaleFactor()).isCloseTo(1.33, org.assertj.core.api.Assertions.within(0.1));
+    }
+
+    @Test
+    public void testScaledComparison_SummaryIncludesScaleInfo() {
+        BufferedImage baseline = createTestImage(200, 200, Color.WHITE);
+        BufferedImage actual = createTestImage(150, 150, Color.WHITE);
+
+        HybridComparisonResult result = comparatorWithoutAI.compare(baseline, actual, 0.10);
+
+        String summary = result.getSummary();
+        assertThat(summary).contains("Scaled:");
+    }
+
+    @Test
+    public void testNoScaling_WhenSameDimensions() {
+        BufferedImage image = createTestImage(100, 100, Color.WHITE);
+
+        HybridComparisonResult result = comparatorWithoutAI.compare(image, image, 0.01);
+
+        // Should NOT be marked as scaled
+        assertThat(result.isWasScaled()).isFalse();
+        assertThat(result.getScaleFactor()).isEqualTo(1.0);
+    }
+
+    // ===========================================
     // Close Tests
     // ===========================================
 

@@ -269,11 +269,17 @@ public final class VisualCapture {
         String language = getLanguage();
         Path baselineDir = getBaselineDir(browserName, className);
 
+        boolean isLocalExecution = isLocalExecution();
+
         log.info("========================================");
         log.info("Visual Capture: {}/{}", className, stepName);
         log.info("Browser: {}, Language: {}", browserName, language);
         log.info("Mode: {}", isRecordMode ? "RECORD" : "COMPARE");
+        log.info("Execution: {}", isLocalExecution ? "LOCAL (laptop/desktop)" : "PIPELINE (SauceLabs)");
         log.info("Baseline directory: {}", baselineDir);
+        if (!isRecordMode && isLocalExecution) {
+            log.info("NOTE: Local execution may use scaled comparison if resolution differs from baseline");
+        }
         if (ignoreRegions != null && !ignoreRegions.isEmpty()) {
             log.info("Ignore regions: {} area(s) will be excluded from comparison", ignoreRegions.size());
             for (int i = 0; i < ignoreRegions.size(); i++) {
@@ -475,11 +481,13 @@ public final class VisualCapture {
                     result.getDiffPercentage(),
                     result.getDiffImage(),
                     result.getStrategy().toString(),
-                    result.usedAI()
+                    result.usedAI(),
+                    result.isWasScaled(),
+                    result.getScaleFactor()
             );
         } catch (Exception e) {
             log.error("Comparison failed for screenshot {}: {}", index, e.getMessage());
-            return new ComparisonResult(index, false, 1.0, null, "ERROR", false);
+            return new ComparisonResult(index, false, 1.0, null, "ERROR", false, false, 1.0);
         }
     }
 
@@ -495,11 +503,18 @@ public final class VisualCapture {
             log.error("VISUAL VALIDATION FAILED: {}/{}", className, stepName);
         }
 
+        // Check if any result was scaled
+        boolean anyScaled = results.stream().anyMatch(r -> r.wasScaled);
+        if (anyScaled) {
+            log.info("NOTE: Comparison performed with SCALED images (local resolution differs from baseline)");
+        }
+
         for (ComparisonResult r : results) {
             String status = r.passed ? "✓ PASS" : "✗ FAIL";
             String aiInfo = r.usedAI ? " [AI]" : "";
-            log.info("  Screenshot {}: {} - diff: {:.4f}% - strategy: {}{}",
-                    r.index, status, r.diffPercentage * 100, r.strategy, aiInfo);
+            String scaledInfo = r.wasScaled ? String.format(" [SCALED %.2fx]", r.scaleFactor) : "";
+            log.info("  Screenshot {}: {} - diff: {:.4f}% - strategy: {}{}{}",
+                    r.index, status, r.diffPercentage * 100, r.strategy, aiInfo, scaledInfo);
         }
 
         long passCount = results.stream().filter(r -> r.passed).count();
@@ -510,8 +525,9 @@ public final class VisualCapture {
             StringBuilder errorMsg = new StringBuilder("Visual mismatch detected:\n");
             for (ComparisonResult r : results) {
                 if (!r.passed) {
-                    errorMsg.append(String.format("  - Screenshot %d: %.4f%% difference (tolerance: %.4f%%)\n",
-                            r.index, r.diffPercentage * 100, DEFAULT_TOLERANCE * 100));
+                    String scaledNote = r.wasScaled ? " (scaled comparison)" : "";
+                    errorMsg.append(String.format("  - Screenshot %d: %.4f%% difference (tolerance: %.4f%%)%s\n",
+                            r.index, r.diffPercentage * 100, DEFAULT_TOLERANCE * 100, scaledNote));
                 }
             }
             lastErrorMessage.set(errorMsg.toString());
@@ -783,6 +799,25 @@ public final class VisualCapture {
     }
 
     /**
+     * Check if we're running locally (not in pipeline/SauceLabs).
+     * Local execution means no SauceLabs tunnel is configured.
+     *
+     * @return true if running locally, false if running in pipeline
+     */
+    public static boolean isLocalExecution() {
+        // Check for SauceLabs/pipeline indicators
+        String hubUse = System.getProperty("bnc.test.hub.use", "false");
+        String hubUrl = System.getProperty("bnc.test.hub.url", "");
+        String sauceUsername = System.getenv("SAUCE_USERNAME");
+
+        boolean isPipeline = "true".equalsIgnoreCase(hubUse)
+                || (hubUrl != null && !hubUrl.isEmpty())
+                || (sauceUsername != null && !sauceUsername.isEmpty());
+
+        return !isPipeline;
+    }
+
+    /**
      * Record visual metric to MetricsCollector.
      */
     private static void recordMetric(String className, String stepName, boolean matched,
@@ -897,15 +932,25 @@ public final class VisualCapture {
         final BufferedImage diffImage;
         final String strategy;
         final boolean usedAI;
+        final boolean wasScaled;
+        final double scaleFactor;
 
         ComparisonResult(int index, boolean passed, double diffPercentage,
                          BufferedImage diffImage, String strategy, boolean usedAI) {
+            this(index, passed, diffPercentage, diffImage, strategy, usedAI, false, 1.0);
+        }
+
+        ComparisonResult(int index, boolean passed, double diffPercentage,
+                         BufferedImage diffImage, String strategy, boolean usedAI,
+                         boolean wasScaled, double scaleFactor) {
             this.index = index;
             this.passed = passed;
             this.diffPercentage = diffPercentage;
             this.diffImage = diffImage;
             this.strategy = strategy;
             this.usedAI = usedAI;
+            this.wasScaled = wasScaled;
+            this.scaleFactor = scaleFactor;
         }
     }
 }

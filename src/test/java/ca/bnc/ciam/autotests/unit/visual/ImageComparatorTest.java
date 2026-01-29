@@ -195,6 +195,94 @@ public class ImageComparatorTest {
         assertThat(result.getTolerance()).isEqualTo(0.01); // Default 1% tolerance
     }
 
+    // ===========================================
+    // Scaling Tests (for local hybrid comparison)
+    // ===========================================
+
+    @Test
+    public void testScaledComparison_DetectsScaling() {
+        // Baseline at higher resolution (like SauceLabs 1920x1080)
+        BufferedImage baseline = createSolidImage(200, 200, Color.WHITE);
+        // Actual at lower resolution (like local laptop)
+        BufferedImage actual = createSolidImage(150, 150, Color.WHITE);
+
+        ImageComparator.ComparisonResult result = comparator.compare(baseline, actual);
+
+        // Should detect that scaling occurred
+        assertThat(result.isWasScaled()).isTrue();
+        assertThat(result.getScaleFactor()).isGreaterThan(1.0); // Upscaled
+        // Original actual dimensions should be preserved
+        assertThat(result.getActualWidth()).isEqualTo(150);
+        assertThat(result.getActualHeight()).isEqualTo(150);
+    }
+
+    @Test
+    public void testScaledComparison_SameColorImages_ShouldMatch() {
+        // Baseline at higher resolution
+        BufferedImage baseline = createSolidImage(200, 200, Color.BLUE);
+        // Actual at lower resolution but same color
+        BufferedImage actual = createSolidImage(150, 150, Color.BLUE);
+
+        // Use higher tolerance for scaled comparison
+        ImageComparator.ComparisonResult result = comparator.compare(baseline, actual, 0.10);
+
+        // Solid color images should match even with scaling
+        assertThat(result.isMatch()).isTrue();
+        assertThat(result.isWasScaled()).isTrue();
+    }
+
+    @Test
+    public void testScaledComparison_DifferentImages_ShouldDetectDifference() {
+        // Baseline with pattern
+        BufferedImage baseline = createSplitImage(200, 200, Color.RED, Color.BLUE);
+        // Actual completely different
+        BufferedImage actual = createSolidImage(150, 150, Color.GREEN);
+
+        ImageComparator.ComparisonResult result = comparator.compare(baseline, actual, 0.01);
+
+        // Should detect the difference even with scaling
+        assertThat(result.isMatch()).isFalse();
+        assertThat(result.isWasScaled()).isTrue();
+        assertThat(result.getDiffPercentage()).isGreaterThan(0.20);
+    }
+
+    @Test
+    public void testScaledComparison_SummaryIncludesScaleInfo() {
+        BufferedImage baseline = createSolidImage(200, 200, Color.WHITE);
+        BufferedImage actual = createSolidImage(150, 150, Color.WHITE);
+
+        ImageComparator.ComparisonResult result = comparator.compare(baseline, actual, 0.10);
+
+        String summary = result.getSummary();
+        assertThat(summary).contains("Scaled:");
+    }
+
+    @Test
+    public void testNoScaling_WhenSameDimensions() {
+        BufferedImage baseline = createSolidImage(100, 100, Color.WHITE);
+        BufferedImage actual = createSolidImage(100, 100, Color.WHITE);
+
+        ImageComparator.ComparisonResult result = comparator.compare(baseline, actual);
+
+        // Should NOT be marked as scaled
+        assertThat(result.isWasScaled()).isFalse();
+        assertThat(result.getScaleFactor()).isEqualTo(1.0);
+    }
+
+    @Test
+    public void testHighQualityScaling_StaticMethod() {
+        BufferedImage original = createSolidImage(100, 100, Color.RED);
+
+        BufferedImage scaled = ImageComparator.scaleImageHighQuality(original, 200, 200);
+
+        assertThat(scaled.getWidth()).isEqualTo(200);
+        assertThat(scaled.getHeight()).isEqualTo(200);
+        // The scaled image should still be predominantly red
+        int centerPixel = scaled.getRGB(100, 100);
+        int red = (centerPixel >> 16) & 0xFF;
+        assertThat(red).isGreaterThan(200); // Should be mostly red
+    }
+
     /**
      * Helper method to create a solid color image.
      */
@@ -203,6 +291,20 @@ public class ImageComparatorTest {
         Graphics2D g = image.createGraphics();
         g.setColor(color);
         g.fillRect(0, 0, width, height);
+        g.dispose();
+        return image;
+    }
+
+    /**
+     * Helper method to create a split color image (left/right).
+     */
+    private BufferedImage createSplitImage(int width, int height, Color leftColor, Color rightColor) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(leftColor);
+        g.fillRect(0, 0, width / 2, height);
+        g.setColor(rightColor);
+        g.fillRect(width / 2, 0, width / 2, height);
         g.dispose();
         return image;
     }

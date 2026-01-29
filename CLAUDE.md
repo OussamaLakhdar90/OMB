@@ -421,6 +421,37 @@ boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "
 | 5-20% | AI_FALLBACK | Gray zone, AI decides final result |
 | >20% | PIXEL_FAIL | Clear mismatch, no AI needed |
 
+**Local vs Pipeline Execution:**
+
+The framework automatically detects the execution context and adjusts comparison accordingly:
+
+| Context | Resolution | Tolerance | Notes |
+|---------|------------|-----------|-------|
+| Pipeline (SauceLabs) | 1920x1080 (controlled) | 1% default | Full precision comparison |
+| Local (laptop) | Dynamic (may differ) | 8% for scaled images | Higher tolerance when scaling needed |
+
+**Why this matters:**
+- Baselines are recorded at 1920x1080 (SauceLabs controlled environment)
+- Local laptops may have smaller screens (e.g., 1366x768, 1536x864)
+- When local resolution differs from baseline, the framework:
+  1. Detects the resolution mismatch
+  2. Scales actual image UP to baseline dimensions using high-quality BICUBIC interpolation
+  3. Applies higher tolerance (8%) to account for scaling artifacts
+  4. Extends gray zone to 25% for AI fallback opportunities
+  5. Logs clear warnings about the scaled comparison
+
+**Scaled Comparison Behavior:**
+```
+========================================
+LOCAL SCALED COMPARISON MODE
+Original tolerance: 1.00%, Effective tolerance: 8.00%
+Scale factor: 1.13x
+Gray zone extended to 25% to account for scaling artifacts
+========================================
+```
+
+**Key point:** Big structural changes (deleted logos, missing elements) will still be detected even with scaled comparison. The higher tolerance only helps with minor scaling artifacts (anti-aliasing, font rendering differences).
+
 **File locations:**
 - Baselines: `src/test/resources/baselines/{browser}/{language}/{ClassName}/{stepName}_1.png`
 - Multiple viewports: `{stepName}_1.png`, `{stepName}_2.png`, etc.

@@ -44,6 +44,10 @@ public class HybridVisualComparator implements AutoCloseable {
     // AI similarity threshold for gray zone decisions
     private static final double DEFAULT_AI_THRESHOLD = 0.92;
 
+    // Local scaled comparison settings
+    private static final double LOCAL_SCALED_TOLERANCE = 0.08;     // 8% tolerance for local scaled comparisons
+    private static final double LOCAL_SCALED_GRAY_ZONE_UPPER = 0.25; // Wider gray zone for scaled (25%)
+
     private final ImageComparator pixelComparator;
     private final AIImageComparator aiComparator;
     private final double grayZoneLower;
@@ -142,31 +146,53 @@ public class HybridVisualComparator implements AutoCloseable {
         ImageComparator.ComparisonResult pixelResult = pixelComparator.compare(baseline, actual, tolerance, ignoreRegions);
         double diffPercentage = pixelResult.getDiffPercentage();
 
-        log.debug("Pixel comparison: diff={}%, tolerance={}%",
-                String.format("%.4f", diffPercentage * 100),
-                String.format("%.4f", tolerance * 100));
+        // Step 2: Check if this is a local scaled comparison
+        boolean isLocalScaled = pixelResult.isWasScaled() && isLocalExecution();
+        double effectiveTolerance = tolerance;
+        double effectiveGrayZoneUpper = grayZoneUpper;
 
-        // Step 2: Determine if we need AI fallback
+        if (isLocalScaled) {
+            // Apply higher tolerance for local scaled comparisons
+            effectiveTolerance = Math.max(tolerance, LOCAL_SCALED_TOLERANCE);
+            effectiveGrayZoneUpper = LOCAL_SCALED_GRAY_ZONE_UPPER;
+
+            log.info("========================================");
+            log.info("LOCAL SCALED COMPARISON MODE");
+            log.info("Original tolerance: {}%, Effective tolerance: {}%",
+                    String.format("%.2f", tolerance * 100), String.format("%.2f", effectiveTolerance * 100));
+            log.info("Scale factor: {:.2f}x", pixelResult.getScaleFactor());
+            log.info("Gray zone extended to {}% to account for scaling artifacts", String.format("%.0f", effectiveGrayZoneUpper * 100));
+            log.info("========================================");
+        }
+
+        log.debug("Pixel comparison: diff={}%, tolerance={}% (effective: {}%)",
+                String.format("%.4f", diffPercentage * 100),
+                String.format("%.4f", tolerance * 100),
+                String.format("%.4f", effectiveTolerance * 100));
+
+        // Step 3: Determine if we need AI fallback
         ComparisonStrategy strategy;
         boolean finalMatch;
         AIImageComparator.AIComparisonResult aiResult = null;
 
-        if (diffPercentage <= tolerance) {
+        if (diffPercentage <= effectiveTolerance) {
             // Clear PASS: below tolerance, no AI needed
             strategy = ComparisonStrategy.PIXEL_PASS;
             finalMatch = true;
-            log.debug("Clear PASS: diff {} <= tolerance {}", diffPercentage, tolerance);
+            log.debug("Clear PASS: diff {} <= tolerance {}", diffPercentage, effectiveTolerance);
 
-        } else if (diffPercentage > grayZoneUpper) {
+        } else if (diffPercentage > effectiveGrayZoneUpper) {
             // Clear FAIL: above gray zone upper bound, too different for AI to help
             strategy = ComparisonStrategy.PIXEL_FAIL;
             finalMatch = false;
-            log.debug("Clear FAIL: diff {} > gray zone upper {}", diffPercentage, grayZoneUpper);
+            log.debug("Clear FAIL: diff {} > gray zone upper {}", diffPercentage, effectiveGrayZoneUpper);
 
-        } else if (diffPercentage > grayZoneLower && diffPercentage <= grayZoneUpper && isAIAvailable()) {
-            // GRAY ZONE: Use AI to decide
+        } else if (diffPercentage > grayZoneLower && diffPercentage <= effectiveGrayZoneUpper && isAIAvailable()) {
+            // GRAY ZONE: Use AI to decide (especially important for scaled comparisons)
             strategy = ComparisonStrategy.AI_FALLBACK;
-            log.info("Gray zone detected (diff={}%), using AI fallback", String.format("%.4f", diffPercentage * 100));
+            log.info("Gray zone detected (diff={}%){}, using AI fallback",
+                    String.format("%.4f", diffPercentage * 100),
+                    isLocalScaled ? " [scaled comparison - AI prioritized]" : "");
 
             aiResult = aiComparator.compare(baseline, actual, aiThreshold);
             finalMatch = aiResult.isMatch();
@@ -178,10 +204,10 @@ public class HybridVisualComparator implements AutoCloseable {
             }
 
         } else {
-            // Gray zone but AI not available - use pixel result
+            // Gray zone but AI not available - use pixel result with effective tolerance
             strategy = ComparisonStrategy.PIXEL_ONLY;
-            finalMatch = pixelResult.isMatch();
-            log.debug("Gray zone but AI unavailable, using pixel result: {}", finalMatch);
+            finalMatch = diffPercentage <= effectiveTolerance;
+            log.debug("Gray zone but AI unavailable, using pixel result with effective tolerance: {}", finalMatch);
         }
 
         long duration = System.currentTimeMillis() - startTime;
@@ -192,12 +218,32 @@ public class HybridVisualComparator implements AutoCloseable {
                 .pixelResult(pixelResult)
                 .aiResult(aiResult)
                 .diffPercentage(diffPercentage)
-                .tolerance(tolerance)
+                .tolerance(effectiveTolerance)
                 .grayZoneLower(grayZoneLower)
-                .grayZoneUpper(grayZoneUpper)
+                .grayZoneUpper(effectiveGrayZoneUpper)
                 .aiThreshold(aiThreshold)
                 .comparisonTimeMs(duration)
+                .wasScaled(pixelResult.isWasScaled())
+                .scaleFactor(pixelResult.getScaleFactor())
+                .isLocalExecution(isLocalScaled)
                 .build();
+    }
+
+    /**
+     * Check if we're running locally (not in pipeline/SauceLabs).
+     * Local execution means no SauceLabs tunnel is configured.
+     */
+    private boolean isLocalExecution() {
+        // Check for SauceLabs/pipeline indicators
+        String hubUse = System.getProperty("bnc.test.hub.use", "false");
+        String hubUrl = System.getProperty("bnc.test.hub.url", "");
+        String sauceUsername = System.getenv("SAUCE_USERNAME");
+
+        boolean isPipeline = "true".equalsIgnoreCase(hubUse)
+                || (hubUrl != null && !hubUrl.isEmpty())
+                || (sauceUsername != null && !sauceUsername.isEmpty());
+
+        return !isPipeline;
     }
 
     @Override
@@ -237,6 +283,15 @@ public class HybridVisualComparator implements AutoCloseable {
         private double grayZoneUpper;
         private double aiThreshold;
         private long comparisonTimeMs;
+        /** True if the actual image was scaled to match baseline */
+        @Builder.Default
+        private boolean wasScaled = false;
+        /** Scale factor applied (1.0 = no scaling) */
+        @Builder.Default
+        private double scaleFactor = 1.0;
+        /** True if running in local execution mode (not pipeline) */
+        @Builder.Default
+        private boolean isLocalExecution = false;
 
         /**
          * Check if AI was used for this comparison.
@@ -256,6 +311,13 @@ public class HybridVisualComparator implements AutoCloseable {
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("Hybrid Match: %s, Strategy: %s, Diff: %.4f%%, Tolerance: %.4f%%",
                     match, strategy, diffPercentage * 100, tolerance * 100));
+
+            if (wasScaled) {
+                sb.append(String.format(", Scaled: %.2fx", scaleFactor));
+                if (isLocalExecution) {
+                    sb.append(" [LOCAL]");
+                }
+            }
 
             if (usedAI()) {
                 sb.append(String.format(", AI Similarity: %.4f", aiResult.getSimilarity()));
