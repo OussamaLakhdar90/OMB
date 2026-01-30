@@ -49,7 +49,7 @@ public class ImageComparator {
      * Create comparator with default tolerance.
      */
     public ImageComparator() {
-        this(0.01); // 1% tolerance by default
+        this(0.003); // 0.3% tolerance by default - very strict
     }
 
     /**
@@ -330,7 +330,7 @@ public class ImageComparator {
 
     /**
      * Create diff image with prominent visual highlighting.
-     * Draws a big red circle around the area with differences for easy spotting.
+     * Detects separate diff regions and draws a circle around each one.
      */
     private BufferedImage createDiffImage(BufferedImage baseline, BufferedImage actual, BufferedImage mask) {
         int width = baseline.getWidth();
@@ -342,73 +342,221 @@ public class ImageComparator {
         // Draw actual image as base
         g.drawImage(actual, 0, 0, null);
 
-        // Find bounding box of all differences
-        int minX = width, minY = height, maxX = 0, maxY = 0;
-        int diffCount = 0;
+        // Enable anti-aliasing for smooth circles
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                           java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
 
-        for (int y = 0; y < Math.min(height, mask.getHeight()); y++) {
-            for (int x = 0; x < Math.min(width, mask.getWidth()); x++) {
-                int maskPixel = mask.getRGB(x, y) & 0xff;
-                if (maskPixel > 0) {
-                    diffCount++;
-                    if (x < minX) minX = x;
-                    if (y < minY) minY = y;
-                    if (x > maxX) maxX = x;
-                    if (y > maxY) maxY = y;
-                }
-            }
-        }
+        // Find separate diff regions using connected component labeling
+        List<int[]> diffRegions = findDiffRegions(mask, width, height);
 
-        if (diffCount > 0) {
-            // Calculate center and radius for the circle
-            int centerX = (minX + maxX) / 2;
-            int centerY = (minY + maxY) / 2;
-            int diffWidth = maxX - minX;
-            int diffHeight = maxY - minY;
-            // Make circle big enough to surround the diff area with padding
-            int radius = (int) (Math.max(diffWidth, diffHeight) / 2.0 * 1.5) + 30;
-
-            // Enable anti-aliasing for smooth circle
-            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
-                               java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-
-            // Draw thick red circle around the diff area
+        if (!diffRegions.isEmpty()) {
             g.setColor(new Color(255, 0, 0));
-            g.setStroke(new java.awt.BasicStroke(5.0f));
-            g.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
+            g.setStroke(new java.awt.BasicStroke(4.0f));
 
-            // Draw crosshair lines pointing to center
-            int lineLength = 20;
-            g.drawLine(centerX - radius - lineLength, centerY, centerX - radius + 10, centerY);
-            g.drawLine(centerX + radius - 10, centerY, centerX + radius + lineLength, centerY);
-            g.drawLine(centerX, centerY - radius - lineLength, centerX, centerY - radius + 10);
-            g.drawLine(centerX, centerY + radius - 10, centerX, centerY + radius + lineLength);
+            int regionNum = 1;
+            int totalDiffPixels = 0;
 
-            // Add label with diff info
+            for (int[] region : diffRegions) {
+                int minX = region[0];
+                int minY = region[1];
+                int maxX = region[2];
+                int maxY = region[3];
+                int pixelCount = region[4];
+                totalDiffPixels += pixelCount;
+
+                // Calculate center and dimensions for the ellipse/circle
+                int centerX = (minX + maxX) / 2;
+                int centerY = (minY + maxY) / 2;
+                int regionWidth = maxX - minX;
+                int regionHeight = maxY - minY;
+
+                // Add padding around the region (minimum 20 pixels)
+                int paddingX = Math.max(20, regionWidth / 4);
+                int paddingY = Math.max(20, regionHeight / 4);
+                int ellipseWidth = regionWidth + paddingX * 2;
+                int ellipseHeight = regionHeight + paddingY * 2;
+
+                // Draw ellipse (circle if square region) around the diff area
+                g.setColor(new Color(255, 0, 0));
+                g.drawOval(centerX - ellipseWidth / 2, centerY - ellipseHeight / 2,
+                           ellipseWidth, ellipseHeight);
+
+                // Add region number label
+                g.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 14));
+                String label = String.format("#%d", regionNum);
+                int labelX = centerX - 10;
+                int labelY = centerY - ellipseHeight / 2 - 8;
+                // Draw label background
+                g.setColor(new Color(255, 255, 255, 200));
+                g.fillRect(labelX - 2, labelY - 12, 25, 16);
+                g.setColor(new Color(255, 0, 0));
+                g.drawString(label, labelX, labelY);
+
+                log.info("Diff region #{}: {} pixels at ({},{}) to ({},{})",
+                        regionNum, pixelCount, minX, minY, maxX, maxY);
+                regionNum++;
+            }
+
+            // Add summary at top of image
             g.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 16));
+            String summary = String.format("DIFF: %d regions, %d pixels total", diffRegions.size(), totalDiffPixels);
+            // Draw background for better readability
+            g.setColor(new Color(255, 255, 255, 220));
+            g.fillRect(8, 8, g.getFontMetrics().stringWidth(summary) + 10, 22);
             g.setColor(new Color(255, 0, 0));
-            String label = String.format("DIFF: %d pixels", diffCount);
-            g.drawString(label, centerX - 60, centerY - radius - 25);
+            g.drawString(summary, 12, 24);
 
-            // Also highlight the actual diff pixels with semi-transparent overlay
-            g.setColor(new Color(255, 0, 0, 100));
-            for (int y = minY; y <= maxY; y++) {
-                for (int x = minX; x <= maxX; x++) {
-                    if (x < mask.getWidth() && y < mask.getHeight()) {
-                        int maskPixel = mask.getRGB(x, y) & 0xff;
-                        if (maskPixel > 0) {
-                            g.fillRect(x, y, 1, 1);
-                        }
-                    }
-                }
-            }
-
-            log.info("Diff highlighted: {} pixels in area ({},{}) to ({},{}), circle radius={}",
-                    diffCount, minX, minY, maxX, maxY, radius);
+            log.info("Total diff: {} regions, {} pixels", diffRegions.size(), totalDiffPixels);
         }
 
         g.dispose();
         return diffImage;
+    }
+
+    /**
+     * Find separate diff regions using flood-fill connected component detection.
+     * Returns list of bounding boxes: [minX, minY, maxX, maxY, pixelCount]
+     */
+    private List<int[]> findDiffRegions(BufferedImage mask, int width, int height) {
+        List<int[]> regions = new ArrayList<>();
+        boolean[][] visited = new boolean[height][width];
+
+        // Minimum region size to filter out noise (at least 10 pixels)
+        int minRegionSize = 10;
+        // Maximum gap to merge nearby regions (pixels within this distance are considered same region)
+        int mergeThreshold = 50;
+
+        for (int y = 0; y < Math.min(height, mask.getHeight()); y++) {
+            for (int x = 0; x < Math.min(width, mask.getWidth()); x++) {
+                if (!visited[y][x]) {
+                    int maskPixel = mask.getRGB(x, y) & 0xff;
+                    if (maskPixel > 0) {
+                        // Found a diff pixel, flood fill to find the region
+                        int[] bounds = floodFillRegion(mask, visited, x, y, width, height);
+                        if (bounds[4] >= minRegionSize) {
+                            regions.add(bounds);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Merge nearby regions (regions that are close together)
+        regions = mergeNearbyRegions(regions, mergeThreshold);
+
+        return regions;
+    }
+
+    /**
+     * Flood fill to find connected diff region.
+     * Returns [minX, minY, maxX, maxY, pixelCount]
+     */
+    private int[] floodFillRegion(BufferedImage mask, boolean[][] visited, int startX, int startY, int width, int height) {
+        int minX = startX, minY = startY, maxX = startX, maxY = startY;
+        int pixelCount = 0;
+
+        // Use iterative approach with stack to avoid stack overflow
+        java.util.Deque<int[]> stack = new java.util.ArrayDeque<>();
+        stack.push(new int[]{startX, startY});
+
+        // Allow small gaps in the region (connectivity threshold)
+        int connectivityRadius = 3;
+
+        while (!stack.isEmpty()) {
+            int[] pos = stack.pop();
+            int x = pos[0];
+            int y = pos[1];
+
+            if (x < 0 || x >= Math.min(width, mask.getWidth()) ||
+                y < 0 || y >= Math.min(height, mask.getHeight())) {
+                continue;
+            }
+            if (visited[y][x]) {
+                continue;
+            }
+
+            int maskPixel = mask.getRGB(x, y) & 0xff;
+            if (maskPixel == 0) {
+                continue;
+            }
+
+            visited[y][x] = true;
+            pixelCount++;
+
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+
+            // Check 8-connected neighbors (and slightly beyond for small gaps)
+            for (int dy = -connectivityRadius; dy <= connectivityRadius; dy++) {
+                for (int dx = -connectivityRadius; dx <= connectivityRadius; dx++) {
+                    if (dx != 0 || dy != 0) {
+                        stack.push(new int[]{x + dx, y + dy});
+                    }
+                }
+            }
+        }
+
+        return new int[]{minX, minY, maxX, maxY, pixelCount};
+    }
+
+    /**
+     * Merge regions that are close to each other.
+     */
+    private List<int[]> mergeNearbyRegions(List<int[]> regions, int threshold) {
+        if (regions.size() <= 1) {
+            return regions;
+        }
+
+        List<int[]> merged = new ArrayList<>();
+        boolean[] used = new boolean[regions.size()];
+
+        for (int i = 0; i < regions.size(); i++) {
+            if (used[i]) continue;
+
+            int[] current = regions.get(i).clone();
+            used[i] = true;
+
+            // Check if any other region should be merged
+            boolean foundMerge;
+            do {
+                foundMerge = false;
+                for (int j = 0; j < regions.size(); j++) {
+                    if (used[j]) continue;
+
+                    int[] other = regions.get(j);
+                    if (regionsOverlapOrNear(current, other, threshold)) {
+                        // Merge: expand current to include other
+                        current[0] = Math.min(current[0], other[0]);
+                        current[1] = Math.min(current[1], other[1]);
+                        current[2] = Math.max(current[2], other[2]);
+                        current[3] = Math.max(current[3], other[3]);
+                        current[4] += other[4];
+                        used[j] = true;
+                        foundMerge = true;
+                    }
+                }
+            } while (foundMerge);
+
+            merged.add(current);
+        }
+
+        return merged;
+    }
+
+    /**
+     * Check if two regions overlap or are within threshold distance.
+     */
+    private boolean regionsOverlapOrNear(int[] r1, int[] r2, int threshold) {
+        // Expand r1 by threshold and check overlap
+        int r1minX = r1[0] - threshold;
+        int r1minY = r1[1] - threshold;
+        int r1maxX = r1[2] + threshold;
+        int r1maxY = r1[3] + threshold;
+
+        // Check if r2 overlaps with expanded r1
+        return !(r2[2] < r1minX || r2[0] > r1maxX || r2[3] < r1minY || r2[1] > r1maxY);
     }
 
     /**

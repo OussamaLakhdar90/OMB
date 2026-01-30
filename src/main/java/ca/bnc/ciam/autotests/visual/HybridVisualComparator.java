@@ -60,7 +60,7 @@ public class HybridVisualComparator implements AutoCloseable {
      * AI is enabled by default but gracefully degrades if unavailable.
      */
     public HybridVisualComparator() {
-        this(0.01, DEFAULT_GRAY_ZONE_LOWER, DEFAULT_GRAY_ZONE_UPPER, DEFAULT_AI_THRESHOLD, true);
+        this(0.003, DEFAULT_GRAY_ZONE_LOWER, DEFAULT_GRAY_ZONE_UPPER, DEFAULT_AI_THRESHOLD, true);
     }
 
     /**

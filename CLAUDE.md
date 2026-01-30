@@ -417,7 +417,8 @@ boolean passed = VisualCapture.captureStep(driver, getClass().getSimpleName(), "
 
 | Diff Range | Strategy | Description |
 |------------|----------|-------------|
-| 0-5% | PIXEL_PASS | Clear match, no AI needed |
+| 0-0.3% | PIXEL_PASS | Clear match (within 0.3% tolerance) |
+| 0.3%-5% | PIXEL_FAIL | Exceeds tolerance but below gray zone |
 | 5-20% | AI_FALLBACK | Gray zone, AI decides final result |
 | >20% | PIXEL_FAIL | Clear mismatch, no AI needed |
 
@@ -427,8 +428,8 @@ The framework automatically detects the execution context and adjusts comparison
 
 | Context | Resolution | Tolerance | Notes |
 |---------|------------|-----------|-------|
-| Pipeline (SauceLabs) | 1920x1080 (controlled) | 1% default | Full precision comparison |
-| Local (laptop) | Dynamic (may differ) | 8% for scaled images | Higher tolerance when scaling needed |
+| Pipeline (SauceLabs) | 1920x1080 (controlled) | 0.3% default | Very strict comparison |
+| Local (laptop) | Dynamic (may differ) | 3% for scaled images | Higher tolerance when scaling needed |
 
 **Why this matters:**
 - Baselines are recorded at 1920x1080 (SauceLabs controlled environment)
@@ -444,7 +445,7 @@ The framework automatically detects the execution context and adjusts comparison
 ```
 ========================================
 LOCAL SCALED COMPARISON MODE
-Original tolerance: 1.00%, Effective tolerance: 8.00%
+Original tolerance: 0.30%, Effective tolerance: 3.00%
 Scale factor: 1.13x
 Gray zone extended to 25% to account for scaling artifacts
 ========================================
@@ -508,10 +509,11 @@ src/test/resources/baselines/
 
 **Diff Image Visualization:**
 When visual comparison fails, a diff image is generated with:
-- A **big red circle** around the area with differences
-- Crosshair lines pointing to the center of the diff
-- A label showing the pixel count (e.g., "DIFF: 1234 pixels")
-- Semi-transparent red overlay on the actual different pixels
+- **Separate red ellipses/circles** around each distinct diff region
+- Each region is numbered (#1, #2, etc.) for easy identification
+- Summary label at top (e.g., "DIFF: 2 regions, 1234 pixels total")
+- Regions within 50 pixels are automatically merged into one circle
+- Noise is filtered out (regions with less than 10 pixels are ignored)
 
 ### AI Image Comparison (DJL + ResNet18)
 
@@ -559,6 +561,14 @@ mvn test -Dbnc.visual.ai.model.path=C:/models/resnet18
 | `bnc.visual.ai.model.path` | Override: Local path to custom ResNet18 model |
 | `bnc.visual.ai.model.url` | Override: Direct URL to download model |
 | `bnc.visual.ai.enabled` | Enable/disable AI fallback (default: true) |
+| `DJL_CACHE_DIR` | Override DJL cache location (default: system temp) |
+
+**Corporate Environment Support:**
+The AI comparator automatically handles corporate environments with SSL interception:
+- SSL certificate verification is disabled for DJL downloads (MITM proxy compatible)
+- DJL cache directory defaults to system temp (`java.io.tmpdir/djl-cache`)
+- Embedded JNI library (`djl_torch.dll`) is auto-extracted to avoid runtime downloads
+- Works fully offline after first initialization
 
 ## Test Reports
 

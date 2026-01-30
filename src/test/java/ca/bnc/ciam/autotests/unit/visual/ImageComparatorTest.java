@@ -192,7 +192,7 @@ public class ImageComparatorTest {
 
         ImageComparator.ComparisonResult result = defaultComparator.compare(image1, image2);
 
-        assertThat(result.getTolerance()).isEqualTo(0.01); // Default 1% tolerance
+        assertThat(result.getTolerance()).isEqualTo(0.003); // Default 0.3% tolerance (strict)
     }
 
     // ===========================================
@@ -281,6 +281,35 @@ public class ImageComparatorTest {
         int centerPixel = scaled.getRGB(100, 100);
         int red = (centerPixel >> 16) & 0xFF;
         assertThat(red).isGreaterThan(200); // Should be mostly red
+    }
+
+    @Test
+    public void testDiffImage_MultipleRegions_DetectedSeparately() {
+        BufferedImage image1 = createSolidImage(200, 200, Color.WHITE);
+        BufferedImage image2 = createSolidImage(200, 200, Color.WHITE);
+
+        // Add two separate diff regions (far apart so they won't be merged)
+        // Region 1: top-left corner
+        for (int x = 10; x < 30; x++) {
+            for (int y = 10; y < 30; y++) {
+                image2.setRGB(x, y, Color.RED.getRGB());
+            }
+        }
+        // Region 2: bottom-right corner (far from region 1)
+        for (int x = 150; x < 180; x++) {
+            for (int y = 150; y < 180; y++) {
+                image2.setRGB(x, y, Color.BLUE.getRGB());
+            }
+        }
+
+        ImageComparator.ComparisonResult result = comparator.compare(image1, image2);
+
+        assertThat(result.isMatch()).isFalse();
+        assertThat(result.getDiffImage()).isNotNull();
+        // The diff image should have circles drawn around regions
+        // Verify the diff image dimensions match
+        assertThat(result.getDiffImage().getWidth()).isEqualTo(200);
+        assertThat(result.getDiffImage().getHeight()).isEqualTo(200);
     }
 
     /**

@@ -77,7 +77,7 @@ public final class VisualCapture {
     private static final String LANGUAGE_PROPERTY = "bnc.web.gui.lang";
     private static final String LANGUAGE_PROPERTY_FALLBACK = "lang";
     private static final String DEFAULT_LANGUAGE = "en";
-    private static final double DEFAULT_TOLERANCE = 0.01; // 1%
+    private static final double DEFAULT_TOLERANCE = 0.003; // 0.3% - very strict tolerance
 
     private static final Path PROJECT_ROOT = detectProjectRoot();
     private static final ScreenshotManager screenshotManager = new ScreenshotManager();
