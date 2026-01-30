@@ -102,6 +102,15 @@ public class AIImageComparator implements AutoCloseable {
     private static final String DJL_UNAVAILABLE_REASON;
 
     static {
+        // Set DJL cache directory to system temp if not already set
+        // This fixes "Failed to save pytorch index file" errors on systems where home directory is read-only
+        // See: https://docs.djl.ai/master/docs/development/cache_management.html
+        if (System.getProperty("DJL_CACHE_DIR") == null && System.getenv("DJL_CACHE_DIR") == null) {
+            String tempDir = System.getProperty("java.io.tmpdir");
+            String djlCacheDir = tempDir + java.io.File.separator + "djl-cache";
+            System.setProperty("DJL_CACHE_DIR", djlCacheDir);
+        }
+
         boolean available = false;
         String reason = null;
         try {
