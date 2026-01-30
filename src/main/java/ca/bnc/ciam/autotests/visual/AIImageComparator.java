@@ -30,10 +30,15 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
 import javax.imageio.ImageIO;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.security.cert.X509Certificate;
 
 /**
  * AI-based image comparison using DJL (Deep Java Library) and ResNet18.
@@ -109,6 +114,10 @@ public class AIImageComparator implements AutoCloseable {
     private static final String DJL_UNAVAILABLE_REASON;
 
     static {
+        // Disable SSL certificate verification for corporate environments with SSL interception
+        // This must happen BEFORE DJL tries to download anything
+        disableSslVerification();
+
         // Set DJL cache directory to system temp if not already set
         // This fixes "Failed to save pytorch index file" errors on systems where home directory is read-only
         // See: https://docs.djl.ai/master/docs/development/cache_management.html
@@ -147,7 +156,7 @@ public class AIImageComparator implements AutoCloseable {
 
     /**
      * Extract embedded JNI library to DJL cache directory.
-     * DJL expects the library at: {cache}/pytorch/{version}-cpu-{platform}/{djl_version}-djl_torch.dll
+     * DJL expects the library at multiple possible locations, so we extract to all of them.
      */
     private static void extractEmbeddedJniLibrary(String cacheDir) {
         // Only extract for Windows x86_64 (the embedded DLL is platform-specific)
@@ -165,24 +174,62 @@ public class AIImageComparator implements AutoCloseable {
                 return; // No embedded library, DJL will try to download
             }
 
-            // DJL cache structure: {cache}/pytorch/{pytorch_version}-cpu-win-x86_64/
-            Path pytorchCacheDir = Paths.get(cacheDir, "pytorch", PYTORCH_VERSION + "-cpu-win-x86_64");
-            Files.createDirectories(pytorchCacheDir);
+            // Extract to multiple possible locations that DJL might check
+            String[] possibleDirs = {
+                "pytorch/" + PYTORCH_VERSION + "-cpu-win-x86_64",
+                "pytorch/" + PYTORCH_VERSION + "-cpu-win-x86_64/jnilib/" + DJL_VERSION
+            };
 
-            // The JNI library file name: {djl_version}-djl_torch.dll
-            Path jniFile = pytorchCacheDir.resolve(DJL_VERSION + "-djl_torch.dll");
+            String[] possibleNames = {
+                "djl_torch.dll",
+                DJL_VERSION + "-djl_torch.dll"
+            };
 
-            // Only extract if not already present
-            if (!Files.exists(jniFile)) {
-                try (InputStream is = AIImageComparator.class.getResourceAsStream(EMBEDDED_JNI_RESOURCE)) {
-                    if (is != null) {
-                        Files.copy(is, jniFile, StandardCopyOption.REPLACE_EXISTING);
-                        // Log at debug level to avoid noise
+            for (String dir : possibleDirs) {
+                Path pytorchCacheDir = Paths.get(cacheDir, dir.split("/"));
+                Files.createDirectories(pytorchCacheDir);
+
+                for (String name : possibleNames) {
+                    Path jniFile = pytorchCacheDir.resolve(name);
+                    if (!Files.exists(jniFile)) {
+                        try (InputStream is = AIImageComparator.class.getResourceAsStream(EMBEDDED_JNI_RESOURCE)) {
+                            if (is != null) {
+                                Files.copy(is, jniFile, StandardCopyOption.REPLACE_EXISTING);
+                            }
+                        }
                     }
                 }
             }
         } catch (Exception e) {
             // Silently ignore - DJL will try to download if extraction fails
+        }
+    }
+
+    /**
+     * Disable SSL certificate verification globally.
+     * This is needed for corporate environments with SSL interception (MITM proxies).
+     * WARNING: This disables SSL security - only use in trusted environments.
+     */
+    private static void disableSslVerification() {
+        try {
+            // Create a trust manager that accepts all certificates
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return null; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                }
+            };
+
+            // Install the all-trusting trust manager
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, trustAllCerts, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+            // Also disable hostname verification
+            HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
+        } catch (Exception e) {
+            // Silently ignore - SSL verification will remain enabled
         }
     }
 
