@@ -97,6 +97,13 @@ public class AIImageComparator implements AutoCloseable {
     /** Embedded model resource path */
     private static final String EMBEDDED_MODEL_RESOURCE = "/models/resnet18/traced_resnet18.pt";
 
+    /** Embedded JNI library resource path (platform-specific) */
+    private static final String EMBEDDED_JNI_RESOURCE = "/native/win-x86_64/djl_torch.dll";
+
+    /** PyTorch and DJL versions for cache directory naming */
+    private static final String PYTORCH_VERSION = "2.1.1";
+    private static final String DJL_VERSION = "0.27.0";
+
     /** Static flag to track DJL availability - checked once at class load */
     private static final boolean DJL_AVAILABLE;
     private static final String DJL_UNAVAILABLE_REASON;
@@ -105,11 +112,18 @@ public class AIImageComparator implements AutoCloseable {
         // Set DJL cache directory to system temp if not already set
         // This fixes "Failed to save pytorch index file" errors on systems where home directory is read-only
         // See: https://docs.djl.ai/master/docs/development/cache_management.html
+        String djlCacheDir;
         if (System.getProperty("DJL_CACHE_DIR") == null && System.getenv("DJL_CACHE_DIR") == null) {
             String tempDir = System.getProperty("java.io.tmpdir");
-            String djlCacheDir = tempDir + java.io.File.separator + "djl-cache";
+            djlCacheDir = tempDir + java.io.File.separator + "djl-cache";
             System.setProperty("DJL_CACHE_DIR", djlCacheDir);
+        } else {
+            djlCacheDir = System.getProperty("DJL_CACHE_DIR", System.getenv("DJL_CACHE_DIR"));
         }
+
+        // Extract embedded JNI library to cache directory (prevents download at runtime)
+        // This is needed for corporate environments with SSL interception
+        extractEmbeddedJniLibrary(djlCacheDir);
 
         boolean available = false;
         String reason = null;
@@ -129,6 +143,47 @@ public class AIImageComparator implements AutoCloseable {
         }
         DJL_AVAILABLE = available;
         DJL_UNAVAILABLE_REASON = reason;
+    }
+
+    /**
+     * Extract embedded JNI library to DJL cache directory.
+     * DJL expects the library at: {cache}/pytorch/{version}-cpu-{platform}/{djl_version}-djl_torch.dll
+     */
+    private static void extractEmbeddedJniLibrary(String cacheDir) {
+        // Only extract for Windows x86_64 (the embedded DLL is platform-specific)
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String arch = System.getProperty("os.arch", "").toLowerCase();
+
+        if (!os.contains("win") || (!arch.contains("amd64") && !arch.contains("x86_64"))) {
+            return; // Not Windows x86_64, skip extraction
+        }
+
+        try {
+            // Check if embedded JNI library exists
+            URL jniUrl = AIImageComparator.class.getResource(EMBEDDED_JNI_RESOURCE);
+            if (jniUrl == null) {
+                return; // No embedded library, DJL will try to download
+            }
+
+            // DJL cache structure: {cache}/pytorch/{pytorch_version}-cpu-win-x86_64/
+            Path pytorchCacheDir = Paths.get(cacheDir, "pytorch", PYTORCH_VERSION + "-cpu-win-x86_64");
+            Files.createDirectories(pytorchCacheDir);
+
+            // The JNI library file name: {djl_version}-djl_torch.dll
+            Path jniFile = pytorchCacheDir.resolve(DJL_VERSION + "-djl_torch.dll");
+
+            // Only extract if not already present
+            if (!Files.exists(jniFile)) {
+                try (InputStream is = AIImageComparator.class.getResourceAsStream(EMBEDDED_JNI_RESOURCE)) {
+                    if (is != null) {
+                        Files.copy(is, jniFile, StandardCopyOption.REPLACE_EXISTING);
+                        // Log at debug level to avoid noise
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Silently ignore - DJL will try to download if extraction fails
+        }
     }
 
     /**
